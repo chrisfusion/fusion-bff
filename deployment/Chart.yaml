@@ -1,0 +1,6 @@
+apiVersion: v2
+name: fusion-bff
+description: Backend for Frontend — OIDC auth proxy for the fusion platform GUI
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

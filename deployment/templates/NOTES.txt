@@ -1,0 +1,10 @@
+fusion-bff {{ .Chart.AppVersion }} deployed.
+
+Service: {{ include "fusion-bff.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
+Health:  http://<cluster-ip>:{{ .Values.service.port }}/health
+Readyz:  http://<cluster-ip>:{{ .Values.service.port }}/readyz
+
+API proxy routes:
+  /api/forge/* → {{ .Values.config.forgeUrl }}
+  /api/index/* → {{ .Values.config.indexUrl }}

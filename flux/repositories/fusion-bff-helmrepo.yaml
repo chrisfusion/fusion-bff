@@ -1,0 +1,9 @@
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: fusion-bff
+  namespace: flux-system
+spec:
+  type: oci
+  url: oci://ghcr.io/fusion-platform/charts
+  interval: 10m

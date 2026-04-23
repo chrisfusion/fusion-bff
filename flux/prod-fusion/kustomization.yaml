@@ -1,0 +1,17 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: fusion-bff
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./flux/prod-fusion
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: fusion-platform
+  targetNamespace: prod-fusion
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age-key

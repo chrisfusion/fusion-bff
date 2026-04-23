@@ -1,0 +1,25 @@
+bin/
+.env
+*.local
+
+# Claude Code (local)
+.claude/
+.claude.local.md
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# Build
+*.test
+*.out
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
