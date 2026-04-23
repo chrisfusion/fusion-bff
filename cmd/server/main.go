@@ -16,6 +16,7 @@ import (
 	"github.com/fusion-platform/fusion-bff/internal/api"
 	"github.com/fusion-platform/fusion-bff/internal/api/handler"
 	"github.com/fusion-platform/fusion-bff/internal/config"
+	"github.com/fusion-platform/fusion-bff/internal/mockoidc"
 	"github.com/fusion-platform/fusion-bff/internal/oidc"
 	"github.com/fusion-platform/fusion-bff/internal/proxy"
 	"github.com/fusion-platform/fusion-bff/internal/session"
@@ -31,14 +32,25 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	validator, err := oidc.NewValidator(ctx, cfg.OIDCIssuerURL, cfg.OIDCClientID, cfg.OIDCJWKSURL, cfg.JWKSCacheTTL)
-	if err != nil {
-		log.Fatalf("oidc validator: %v", err)
-	}
+	var validator oidc.TokenValidator
+	var checker allowlist.Checker
+	var mockOIDC *mockoidc.Server
 
-	// Use the static in-memory checker directly; TTL cache only adds value
-	// when the Checker implementation performs I/O (e.g. database lookup).
-	checker := allowlist.New(cfg.AllowedUsers)
+	if cfg.OIDCBypass {
+		log.Println("[WARNING] OIDC_BYPASS=true — embedded mock OIDC active — NOT for production use")
+		mockOIDC = mockoidc.New(cfg)
+		validator = mockOIDC.Validator()
+		checker = allowlist.New(nil) // allow all authenticated users; bypass is the gate
+	} else {
+		var err error
+		validator, err = oidc.NewValidator(ctx, cfg.OIDCIssuerURL, cfg.OIDCClientID, cfg.OIDCJWKSURL, cfg.JWKSCacheTTL)
+		if err != nil {
+			log.Fatalf("oidc validator: %v", err)
+		}
+		// Use the static in-memory checker directly; TTL cache only adds value
+		// when the Checker implementation performs I/O (e.g. database lookup).
+		checker = allowlist.New(cfg.AllowedUsers)
+	}
 
 	store := session.NewInMemoryStore(cfg.SessionMaxAge)
 	go func() {
@@ -90,6 +102,9 @@ func main() {
 	}
 
 	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, forgeProxy, indexProxy, weaveProxy)
+	if mockOIDC != nil {
+		mockOIDC.RegisterRoutes(router)
+	}
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.HTTPPort,

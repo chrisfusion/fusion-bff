@@ -7,11 +7,6 @@ metadata:
     {{- include "fusion-bff.labels" . | nindent 4 }}
 data:
   HTTP_PORT: {{ .Values.config.httpPort | quote }}
-  OIDC_ISSUER_URL: {{ .Values.config.oidcIssuerUrl | quote }}
-  OIDC_CLIENT_ID: {{ .Values.config.oidcClientId | quote }}
-  {{- if .Values.config.oidcJwksUrl }}
-  OIDC_JWKS_URL: {{ .Values.config.oidcJwksUrl | quote }}
-  {{- end }}
   OIDC_JWKS_CACHE_TTL: {{ .Values.config.oidcJwksCacheTtl | quote }}
   SA_TOKEN_CACHE_TTL: {{ .Values.config.saTokenCacheTtl | quote }}
   ALLOWLIST_CACHE_TTL: {{ .Values.config.allowlistCacheTtl | quote }}
@@ -19,14 +14,30 @@ data:
   FORGE_URL: {{ .Values.config.forgeUrl | quote }}
   INDEX_URL: {{ .Values.config.indexUrl | quote }}
   WEAVE_URL: {{ .Values.config.weaveUrl | quote }}
-  OIDC_REDIRECT_URL: {{ .Values.config.oidcRedirectUrl | quote }}
-  {{- if .Values.config.oidcPublicAuthUrl }}
-  OIDC_PUBLIC_AUTH_URL: {{ .Values.config.oidcPublicAuthUrl | quote }}
-  {{- end }}
   SESSION_COOKIE_NAME: {{ .Values.config.sessionCookieName | quote }}
   SESSION_COOKIE_DOMAIN: {{ .Values.config.sessionCookieDomain | quote }}
   SESSION_COOKIE_SECURE: {{ .Values.config.sessionCookieSecure | quote }}
   SESSION_MAX_AGE: {{ .Values.config.sessionMaxAge | quote }}
   {{- if .Values.config.corsOrigins }}
   CORS_ORIGINS: {{ .Values.config.corsOrigins | quote }}
+  {{- end }}
+  POST_LOGIN_REDIRECT_URL: {{ .Values.config.postLoginRedirectUrl | quote }}
+  {{- if .Values.config.oidcBypass }}
+  OIDC_BYPASS: "true"
+  {{- if .Values.config.oidcBypassBaseUrl }}
+  OIDC_BYPASS_BASE_URL: {{ .Values.config.oidcBypassBaseUrl | quote }}
+  {{- end }}
+  OIDC_BYPASS_SUB: {{ .Values.config.oidcBypassSub | quote }}
+  OIDC_BYPASS_EMAIL: {{ .Values.config.oidcBypassEmail | quote }}
+  OIDC_BYPASS_NAME: {{ .Values.config.oidcBypassName | quote }}
+  {{- else }}
+  OIDC_ISSUER_URL: {{ required "config.oidcIssuerUrl is required when oidcBypass is false" .Values.config.oidcIssuerUrl | quote }}
+  OIDC_CLIENT_ID: {{ required "config.oidcClientId is required when oidcBypass is false" .Values.config.oidcClientId | quote }}
+  {{- if .Values.config.oidcJwksUrl }}
+  OIDC_JWKS_URL: {{ .Values.config.oidcJwksUrl | quote }}
+  {{- end }}
+  OIDC_REDIRECT_URL: {{ .Values.config.oidcRedirectUrl | quote }}
+  {{- if .Values.config.oidcPublicAuthUrl }}
+  OIDC_PUBLIC_AUTH_URL: {{ .Values.config.oidcPublicAuthUrl | quote }}
+  {{- end }}
   {{- end }}

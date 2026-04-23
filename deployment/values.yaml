@@ -78,8 +78,9 @@ secret:
 
 config:
   httpPort: "8080"
-  oidcIssuerUrl: ""       # required — e.g. https://keycloak.example.com/realms/fusion
-  oidcClientId: ""        # required — expected aud claim
+  # OIDC — required when oidcBypass is false
+  oidcIssuerUrl: ""       # e.g. https://keycloak.example.com/realms/fusion
+  oidcClientId: ""        # expected aud claim
   oidcJwksUrl: ""         # optional — defaults to {oidcIssuerUrl}/protocol/openid-connect/certs
   oidcJwksCacheTtl: "15m"
   saTokenCacheTtl: "5m"
@@ -88,11 +89,18 @@ config:
   forgeUrl: "http://fusion-forge.fusion.svc.cluster.local:8080"
   indexUrl: "http://fusion-index-backend.fusion.svc.cluster.local:8080"
   weaveUrl: "http://fusion-weave-api.fusion.svc.cluster.local:8082"
-  # BFF session layer
-  oidcRedirectUrl: ""         # required — e.g. https://bff.example.com/bff/callback
+  # BFF session layer — required when oidcBypass is false
+  oidcRedirectUrl: ""         # e.g. https://bff.example.com/bff/callback
   oidcPublicAuthUrl: ""       # optional — browser-visible Keycloak URL; defaults to oidcIssuerUrl
   sessionCookieName: "sid"
   sessionCookieDomain: ""     # "" = no Domain attr, "auto" = derive from request Host
   sessionCookieSecure: "false" # set "true" in production (requires HTTPS)
   sessionMaxAge: "8h"
   corsOrigins: ""             # comma-separated allowed origins; empty = CORS disabled
+  postLoginRedirectUrl: "/"   # where to send the browser after a successful login
+  # Mock OIDC bypass — development only, never enable in production
+  oidcBypass: false
+  oidcBypassBaseUrl: ""       # browser-visible BFF URL; defaults to http://localhost:{httpPort}
+  oidcBypassSub: "dev-user"
+  oidcBypassEmail: "dev@local"
+  oidcBypassName: "Dev User"

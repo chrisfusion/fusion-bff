@@ -22,8 +22,13 @@ There is no database, no session state, and no business logic.
 │                                                            │
 │  cmd/server/main.go                                        │
 │    └─ config.Load()             reads env vars             │
-│    └─ oidc.NewValidator()       JWKS-backed JWT verifier   │
-│    └─ allowlist.New()           in-memory sub/email checker│
+│    └─ if OIDCBypass:                                       │
+│         mockoidc.New()          RSA key + mock server      │
+│         mockoidc.Validator()    in-process JWT verifier    │
+│         allowlist.New(nil)      allow-all checker          │
+│       else:                                                 │
+│         oidc.NewValidator()     JWKS-backed JWT verifier   │
+│         allowlist.New()         in-memory sub/email checker│
 │    └─ token.NewFileProvider() ×2  (saToken, weaveSAToken) │
 │    └─ proxy.NewUpstreamProxy() ×3  (forge, index, weave)  │
 │    └─ api.NewRouter()           gin engine                 │
@@ -147,20 +152,27 @@ cmd/server/          Entry point — wires all components and starts the HTTP se
 internal/
   config/            Env var loading; all time.Duration values parsed here
   oidc/
-    claims.go        UserClaims{Subject, Email}
+    claims.go        UserClaims{Subject, Email, Name}
     jwks.go          cachingKeySet — JWKS fetch + TTL invalidation
-    validator.go     TokenValidator interface + oidcValidator
+    validator.go     TokenValidator interface + oidcValidator (production)
+  mockoidc/          Embedded mock OIDC — active only when OIDC_BYPASS=true
+    server.go        RSA keypair, login form, auth code store, mock route handlers
+    validator.go     mockValidator — verifies JWTs using the in-memory key (no HTTP)
   allowlist/
     allowlist.go     Checker interface, staticChecker, WithTTLCache wrapper
   token/
     provider.go      Provider interface, FileProvider with RWMutex double-check
   proxy/
     upstream.go      UpstreamProxy (shared by forge, index, weave), SetUserContext
+  session/
+    session.go       Session struct, InMemoryStore, PKCE pending state, CookieDomain helper
   api/
     handler/
       health.go      /health /livez /readyz
+      auth.go        /bff/login, /bff/callback, /bff/logout, /bff/userinfo
     middleware/
-      auth.go        OIDC + allowlist middleware
+      apiauth.go     /api/* combined middleware: session cookie + Bearer fallback
+      cors.go        CORS middleware
       requestid.go   X-Request-ID propagation
     router.go        Gin route registration
 test/e2e/            End-to-end tests (build tag: e2e)
@@ -204,6 +216,20 @@ If the upstream validates the SA token via K8s TokenReview (like fusion-weave), 
 
 `oidc.TokenValidator` is an interface. A custom implementation (e.g. introspection endpoint, symmetric JWT) can be swapped in `main.go` without touching the auth middleware.
 
+`mockoidc.Server` in `internal/mockoidc/` is a concrete example of this pattern: it implements `TokenValidator` using an in-memory RSA key and registers its own routes on the Gin engine. The existing `AuthHandler`, `APIAuth` middleware, and router are completely unaware of the substitution.
+
+### Mock OIDC bypass
+
+When `OIDC_BYPASS=true`, `main.go` substitutes:
+
+| Production | Bypass |
+|---|---|
+| `oidc.NewValidator(...)` | `mockoidc.New(cfg).Validator()` |
+| `allowlist.New(cfg.AllowedUsers)` | `allowlist.New(nil)` (allow all) |
+| No extra routes | `mockoidc.RegisterRoutes(router)` |
+
+Everything downstream (session creation, cookie handling, proxy forwarding, identity headers) is identical between bypass and production mode.
+
 ---
 
 ## Security model
@@ -216,5 +242,6 @@ If the upstream validates the SA token via K8s TokenReview (like fusion-weave), 
 | SA token exposure | Never returned to client; only used on the server-to-server leg |
 | JWKS poisoning | BFF fetches JWKS from the configured URL; clients cannot influence the key set |
 | Container breakout | Distroless image, `readOnlyRootFilesystem: true`, runs as non-root (`nonroot` distroless user) |
+| OIDC bypass misuse | `OIDC_BYPASS=true` disables all real token validation; guard with Helm `required` on prod values files and CI lint rules; startup log prints a loud `[WARNING]` |
 | SA token audience abuse | forge/index token is audience-scoped to `fusion-bff`; weave token is separate and cannot be used to impersonate the BFF to other services |
 | Weave RBAC escalation | BFF SA label `fusion-platform.io/role: admin` is set by Helm; token is never exposed to clients |

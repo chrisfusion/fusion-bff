@@ -35,6 +35,13 @@ type Config struct {
 	SessionMaxAge     time.Duration // SESSION_MAX_AGE — default 8h
 	CORSOrigins            []string      // CORS_ORIGINS — comma-separated allowed origins
 	PostLoginRedirectURL   string        // POST_LOGIN_REDIRECT_URL — where to send the browser after successful login; default "/"
+
+	// Mock OIDC bypass — OIDC_BYPASS=true only; never set in production
+	OIDCBypass       bool   // OIDC_BYPASS — enable embedded mock OIDC server
+	OIDCBypassBaseURL string // OIDC_BYPASS_BASE_URL — BFF base URL as seen by the browser (default: http://localhost:{HTTP_PORT})
+	OIDCBypassSub    string // OIDC_BYPASS_SUB — default sub claim pre-filled in the login form
+	OIDCBypassEmail  string // OIDC_BYPASS_EMAIL — default email claim
+	OIDCBypassName   string // OIDC_BYPASS_NAME — default name claim
 }
 
 func Load() (*Config, error) {
@@ -50,13 +57,23 @@ func Load() (*Config, error) {
 		WeaveSATokenPath: envOrDefault("WEAVE_SA_TOKEN_PATH", "/var/run/secrets/fusion-bff/weave/token"),
 	}
 
-	if cfg.OIDCIssuerURL == "" {
-		return nil, fmt.Errorf("OIDC_ISSUER_URL is required")
+	cfg.OIDCBypass = os.Getenv("OIDC_BYPASS") == "true"
+	if cfg.OIDCBypass {
+		cfg.OIDCBypassBaseURL = envOrDefault("OIDC_BYPASS_BASE_URL", "http://localhost:"+cfg.HTTPPort)
+		cfg.OIDCBypassSub     = envOrDefault("OIDC_BYPASS_SUB", "dev-user")
+		cfg.OIDCBypassEmail   = envOrDefault("OIDC_BYPASS_EMAIL", "dev@local")
+		cfg.OIDCBypassName    = envOrDefault("OIDC_BYPASS_NAME", "Dev User")
 	}
-	if cfg.OIDCClientID == "" {
-		return nil, fmt.Errorf("OIDC_CLIENT_ID is required")
+
+	if !cfg.OIDCBypass {
+		if cfg.OIDCIssuerURL == "" {
+			return nil, fmt.Errorf("OIDC_ISSUER_URL is required")
+		}
+		if cfg.OIDCClientID == "" {
+			return nil, fmt.Errorf("OIDC_CLIENT_ID is required")
+		}
 	}
-	if cfg.OIDCJWKSURL == "" {
+	if cfg.OIDCJWKSURL == "" && !cfg.OIDCBypass {
 		// Default to Keycloak convention; override with OIDC_JWKS_URL for other providers.
 		cfg.OIDCJWKSURL = strings.TrimRight(cfg.OIDCIssuerURL, "/") + "/protocol/openid-connect/certs"
 	}
@@ -103,6 +120,24 @@ func Load() (*Config, error) {
 			if o = strings.TrimSpace(o); o != "" {
 				cfg.CORSOrigins = append(cfg.CORSOrigins, o)
 			}
+		}
+	}
+
+	// Override OIDC endpoints to point at the embedded mock server.
+	// Applied last so env-var values loaded above are replaced unconditionally.
+	if cfg.OIDCBypass {
+		if cfg.OIDCClientID == "" {
+			cfg.OIDCClientID = "fusion-bff-mock"
+		}
+		internal := "http://localhost:" + cfg.HTTPPort + "/mock-oidc"
+		public   := strings.TrimRight(cfg.OIDCBypassBaseURL, "/") + "/mock-oidc"
+		cfg.OIDCIssuerURL     = internal
+		cfg.OIDCPublicAuthURL = public
+		cfg.OIDCRevokeURL     = internal + "/protocol/openid-connect/revoke"
+		cfg.OIDCEndSessionURL = public + "/protocol/openid-connect/logout"
+		cfg.OIDCClientSecret  = ""
+		if cfg.OIDCRedirectURL == "" {
+			cfg.OIDCRedirectURL = strings.TrimRight(cfg.OIDCBypassBaseURL, "/") + "/bff/callback"
 		}
 	}
 

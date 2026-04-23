@@ -79,6 +79,7 @@ Same Flux + Helm pattern as fusion-forge:
 
 | Variable | Default | Description |
 |---|---|---|
+| `POST_LOGIN_REDIRECT_URL` | `/` | Where the browser is sent after a successful login (`/bff/callback`) |
 | `HTTP_PORT` | `8080` | Listen port |
 | `OIDC_ISSUER_URL` | — | OIDC provider issuer URL |
 | `OIDC_CLIENT_ID` | — | Expected `aud` claim value |
@@ -101,17 +102,23 @@ Same Flux + Helm pattern as fusion-forge:
 | `SESSION_COOKIE_DOMAIN` | `""` | Cookie Domain attr: `""` = omit, `"auto"` = derive `.parent` from Host, or literal value |
 | `SESSION_COOKIE_SECURE` | `false` | Set Secure flag on session cookie; set `true` in production |
 | `SESSION_MAX_AGE` | `8h` | Maximum session lifetime (also sets cookie MaxAge) |
+| `OIDC_BYPASS` | `false` | `true` = start embedded mock OIDC server; skips real OIDC validation and allowlist — **never use in production** |
+| `OIDC_BYPASS_BASE_URL` | `http://localhost:{HTTP_PORT}` | Browser-visible BFF base URL used to build mock OIDC redirect URLs |
+| `OIDC_BYPASS_SUB` | `dev-user` | Subject (`sub`) claim pre-filled in the mock login form |
+| `OIDC_BYPASS_EMAIL` | `dev@local` | Email claim pre-filled in the mock login form |
+| `OIDC_BYPASS_NAME` | `Dev User` | Display name claim pre-filled in the mock login form |
 
 ## Local dev (minikube)
 - Minikube deployment uses tag `fusion-bff:local` — build with `docker build -t fusion-bff:local .` (not `latest`)
-- Dev configmap: set `POST_LOGIN_REDIRECT_URL=http://dev.fusion.local:5174`, add `http://dev.fusion.local:5174` to `CORS_ORIGINS`
+- Dev Vite server: `POST_LOGIN_REDIRECT_URL=http://dev.fusion.local:5174`, `CORS_ORIGINS=http://dev.fusion.local:5174`
+- In-cluster spectra (bypass mode): `POST_LOGIN_REDIRECT_URL=http://spectra.fusion.local/`, `CORS_ORIGINS=http://spectra.fusion.local`, `SESSION_COOKIE_DOMAIN=auto` — see DEV.md for complete Helm commands
 - Upstream proxy (`internal/proxy/upstream.go`) strips CORS headers in `ModifyResponse` — prevents duplicate `Access-Control-Allow-Origin` when upstream also sets it
 
 ## Minikube testing gotchas
 
 - **OIDC issuer mismatch**: BFF rejects tokens fetched via `localhost` port-forward — the `iss` claim won't match `OIDC_ISSUER_URL`. Fetch tokens from inside the cluster: `kubectl run token-fetch --rm -i --restart=Never --image=alpine/curl:latest --namespace fusion -- sh -c 'curl -s -X POST http://keycloak.default.svc.cluster.local:8080/realms/fusion/protocol/openid-connect/token -d "grant_type=password&client_id=fusion-gui&client_secret=<secret>&username=testuser&password=password"' 2>/dev/null | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4`
 - **Keycloak `fusion-gui` is a confidential client** — always pass `client_secret` when fetching tokens; omitting it returns `unauthorized_client`
-- **Helm field manager conflicts**: Resources originally created with `kubectl apply` (field manager `kubectl-client-side-apply`) block `helm upgrade`. Use `kubectl set env` / `kubectl label` directly as a workaround instead of fighting the field manager
+- **Helm field manager conflicts**: Resources originally created with `kubectl apply` or `kubectl patch` block `helm upgrade`. Fix: `kubectl patch configmap <name> -n <ns> --type merge -p '{"data":{...}}'` for ConfigMap keys; `kubectl set env deployment/<name>` for Deployment env vars; always follow with `kubectl rollout restart deployment/<name> -n <ns>`
 - **ConfigMap env vars**: Updating a ConfigMap doesn't restart pods — run `kubectl rollout restart deployment/<name> -n <namespace>` to pick up changes
 
 ## Commands
@@ -142,12 +149,15 @@ kubectl port-forward -n fusion service/fusion-bff 18081:8080 --address 127.0.0.1
 cmd/
   server/main.go           # Entry point — config + gin
 internal/
-  config/config.go         # Env var loading
+  config/config.go         # Env var loading (bypass fields: OIDCBypass, OIDCBypassBaseURL, etc.)
   allowlist/allowlist.go   # Checker interface + static impl + WithTTLCache wrapper
   oidc/
     claims.go              # UserClaims struct
-    validator.go           # JWT validation against JWKS endpoint
+    validator.go           # JWT validation against JWKS endpoint (production)
     jwks.go                # JWKS fetching and caching (cachingKeySet with TTL)
+  mockoidc/                # Embedded mock OIDC — active only when OIDC_BYPASS=true
+    server.go              # RSA key gen, login form, auth code store, mock route handlers
+    validator.go           # mockValidator — verifies JWTs using in-memory key (no HTTP)
   token/provider.go        # SA token Provider interface + FileProvider (TTL cache)
   proxy/
     upstream.go            # UpstreamProxy (single type used for forge, index, and weave)

@@ -8,6 +8,65 @@ BFF=http://localhost:18081
 
 ---
 
+## Mock OIDC bypass (no Keycloak needed)
+
+When the BFF is running with `OIDC_BYPASS=true`, you don't need a real OIDC token. The browser login flow works against the embedded mock server.
+
+### Browser login via the mock login form
+
+```bash
+# Start the BFF in bypass mode
+OIDC_BYPASS=true OIDC_BYPASS_BASE_URL=http://localhost:8080 \
+  FORGE_URL=http://localhost:8081 \
+  K8S_SA_TOKEN_PATH=/tmp/sa-token WEAVE_SA_TOKEN_PATH=/tmp/weave-sa-token \
+  make run
+
+# Open in browser — a mock login form appears
+open http://localhost:8080/bff/login
+```
+
+After submitting the form, the BFF sets an `sid` session cookie. Subsequent `curl` calls can use that cookie:
+
+```bash
+# Extract the cookie from a browser session or use curl's cookie jar
+curl -c /tmp/bff-cookies.txt -b /tmp/bff-cookies.txt \
+  -s http://localhost:8080/bff/userinfo | jq .
+# {"sub":"dev-user","email":"dev@local","name":"Dev User"}
+```
+
+### API calls with a mock Bearer token
+
+In bypass mode the `mockValidator` accepts any RS256 token signed with the in-memory key. The simplest way to test API calls without a browser is to obtain a token directly from the mock token endpoint:
+
+```bash
+BFF=http://localhost:8080
+
+# Step 1 — start a login flow to get a state value
+STATE=$(curl -s -o /dev/null -w "%{redirect_url}" $BFF/bff/login \
+  | grep -o 'state=[^&]*' | cut -d= -f2)
+
+# Step 2 — submit the mock login form directly
+curl -s -c /tmp/bff-cookies.txt \
+  -d "state=$STATE&redirect_uri=$BFF/bff/callback&sub=alice&email=alice@example.com&name=Alice" \
+  -L $BFF/mock-oidc/protocol/openid-connect/auth
+
+# Step 3 — use the session cookie for API calls
+curl -s -b /tmp/bff-cookies.txt \
+  $BFF/api/forge/api/v1/venvs | jq .
+```
+
+### Obtain an access token from the mock token endpoint (service-to-service style)
+
+The mock token endpoint also accepts `grant_type=refresh_token` with any previously issued refresh token, or you can use the embedded auth code flow via curl to get a Bearer token for use in scripts:
+
+```bash
+# After a browser login, the session cookie is more convenient.
+# For pure Bearer token testing, check the session's access token via userinfo:
+curl -s -b /tmp/bff-cookies.txt $BFF/bff/userinfo | jq .
+```
+
+---
+
 ## Obtain an OIDC token from Keycloak
 
 ### Public client

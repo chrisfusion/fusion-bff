@@ -59,12 +59,14 @@ spec:
               value: /var/run/secrets/fusion-bff/token
             - name: WEAVE_SA_TOKEN_PATH
               value: /var/run/secrets/fusion-bff/weave/token
-            {{- if .Values.secret.create }}
+            {{- if and .Values.secret.create (not .Values.config.oidcBypass) }}
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "fusion-bff.fullname" . }}
                   key: OIDC_CLIENT_SECRET
+            {{- end }}
+            {{- if .Values.secret.create }}
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:

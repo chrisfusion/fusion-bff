@@ -37,6 +37,7 @@ Pod-to-pod traffic (e.g. CI pipelines calling forge directly) bypasses the BFF e
 | CORS | Configurable allowed origins via `CORS_ORIGINS` |
 | Health endpoints | `/health`, `/livez`, `/readyz` — no auth required |
 | Graceful shutdown | 15 s drain on SIGTERM |
+| Mock OIDC bypass | `OIDC_BYPASS=true` starts an embedded OIDC server on the same port; full PKCE flow works with a browser login form — no Keycloak needed for dev/testing |
 
 ---
 
@@ -52,6 +53,25 @@ make run                      # starts on :8080
 make docker-build IMG=fusion-bff:local
 docker run --env-file .env -p 8080:8080 fusion-bff:local
 ```
+
+### Quick start without Keycloak (mock OIDC bypass)
+
+No OIDC provider needed. The BFF starts an embedded mock OIDC server on the same port and serves a browser login form at `/bff/login`.
+
+```bash
+OIDC_BYPASS=true \
+OIDC_BYPASS_BASE_URL=http://localhost:8080 \
+FORGE_URL=http://localhost:8081 \
+INDEX_URL=http://localhost:8082 \
+WEAVE_URL=http://localhost:8083 \
+K8S_SA_TOKEN_PATH=/tmp/sa-token \
+WEAVE_SA_TOKEN_PATH=/tmp/weave-sa-token \
+make run
+```
+
+Open `http://localhost:8080/bff/login` in a browser. A pre-filled login form appears; submit it to create a session. All `OIDC_*` and `SESSION_SECRET` variables are optional in bypass mode.
+
+> **Never set `OIDC_BYPASS=true` in a production environment.** It disables all real token validation and the user allowlist.
 
 ---
 
@@ -102,6 +122,18 @@ All configuration is via environment variables.
 | `SESSION_COOKIE_DOMAIN` | `""` | Cookie Domain: `""` = omit, `"auto"` = derive `.parent` from Host header, or a literal value |
 | `SESSION_COOKIE_SECURE` | `false` | Set `true` in production (HTTPS) |
 | `SESSION_MAX_AGE` | `8h` | Maximum session lifetime |
+
+### Development bypass (mock OIDC) — never use in production
+
+| Variable | Default | Description |
+|---|---|---|
+| `OIDC_BYPASS` | `false` | `true` = start embedded mock OIDC; skips all real token validation and allowlist |
+| `OIDC_BYPASS_BASE_URL` | `http://localhost:{HTTP_PORT}` | Browser-visible BFF URL used to build mock OIDC redirect URLs |
+| `OIDC_BYPASS_SUB` | `dev-user` | Default `sub` claim pre-filled in the mock login form |
+| `OIDC_BYPASS_EMAIL` | `dev@local` | Default `email` claim pre-filled in the mock login form |
+| `OIDC_BYPASS_NAME` | `Dev User` | Default display name pre-filled in the mock login form |
+
+When `OIDC_BYPASS=true`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, and `OIDC_REDIRECT_URL` are all auto-derived and do not need to be set.
 
 ### Allowlist / upstreams
 

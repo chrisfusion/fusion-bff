@@ -34,11 +34,13 @@ Copy the example env file and fill in your values:
 cp .env.example .env
 ```
 
-Minimum required values:
+Minimum required values (with a real OIDC provider):
 
 ```dotenv
 OIDC_ISSUER_URL=https://keycloak.example.com/realms/fusion
 OIDC_CLIENT_ID=fusion-gui
+OIDC_CLIENT_SECRET=your-client-secret
+OIDC_REDIRECT_URL=http://localhost:8080/bff/callback
 ALLOWED_USERS=alice@example.com,bob@example.com
 FORGE_URL=http://localhost:8081
 INDEX_URL=http://localhost:8082
@@ -73,6 +75,58 @@ make test-e2e      # e2e tests — no external services needed
 
 ---
 
+## Local development without Keycloak (OIDC bypass mode)
+
+When you don't have a Keycloak instance available, set `OIDC_BYPASS=true`. The BFF starts an embedded mock OIDC server on the same port and handles the full PKCE browser login flow internally. No `OIDC_*` variables are required.
+
+> **Never use bypass mode in a production or staging environment.** It disables all real token validation and the allowlist.
+
+### Minimum env for bypass mode
+
+```dotenv
+OIDC_BYPASS=true
+OIDC_BYPASS_BASE_URL=http://localhost:8080   # must be the URL the browser uses to reach the BFF
+# Optional identity pre-fill (form values are editable before submitting):
+OIDC_BYPASS_SUB=alice
+OIDC_BYPASS_EMAIL=alice@example.com
+OIDC_BYPASS_NAME=Alice Example
+# Upstream URLs and dummy SA token files still required:
+FORGE_URL=http://localhost:8081
+INDEX_URL=http://localhost:8082
+WEAVE_URL=http://localhost:8083
+K8S_SA_TOKEN_PATH=/tmp/sa-token
+WEAVE_SA_TOKEN_PATH=/tmp/weave-sa-token
+```
+
+```bash
+echo "dummy-token" > /tmp/sa-token
+echo "dummy-weave-token" > /tmp/weave-sa-token
+make run
+```
+
+Open `http://localhost:8080/bff/login` in a browser. A yellow-warned mock login form appears pre-filled with the configured identity. You can change `sub`, `email`, and `name` before submitting to test different user identities. Submitting creates a real server-side session and sets the `sid` cookie — the rest of the BFF behaves identically to production.
+
+### How it works
+
+When bypass is active the BFF registers these additional routes on the same Gin engine, mirroring Keycloak's path convention:
+
+| Route | Purpose |
+|---|---|
+| `GET /mock-oidc/protocol/openid-connect/auth` | Renders the mock login form |
+| `POST /mock-oidc/protocol/openid-connect/auth` | Issues an auth code, redirects to `/bff/callback` |
+| `POST /mock-oidc/protocol/openid-connect/token` | Exchanges auth code for signed JWTs (RS256, 24 h expiry) |
+| `GET /mock-oidc/protocol/openid-connect/certs` | Serves the JWKS (in-memory RSA public key) |
+| `POST /mock-oidc/protocol/openid-connect/revoke` | No-op (returns 200) |
+| `GET /mock-oidc/protocol/openid-connect/logout` | Redirects to `post_logout_redirect_uri` or `/` |
+
+A fresh RSA-2048 keypair is generated at startup; tokens issued in one run are invalid after restart.
+
+### Logout in bypass mode
+
+Logout works normally — the browser is redirected to the mock end-session endpoint, which immediately redirects to `/`. No real token revocation occurs.
+
+---
+
 ## Docker
 
 ### Build
@@ -85,12 +139,14 @@ docker build -t fusion-bff:local .
 
 The multi-stage Dockerfile uses `golang:1.25-alpine` to build a statically linked binary and copies it into `gcr.io/distroless/static-debian12:nonroot`. The final image has no shell and runs as a non-root user.
 
-### Run
+### Run (with Keycloak)
 
 ```bash
 docker run \
   -e OIDC_ISSUER_URL=https://keycloak.example.com/realms/fusion \
   -e OIDC_CLIENT_ID=fusion-gui \
+  -e OIDC_CLIENT_SECRET=your-client-secret \
+  -e OIDC_REDIRECT_URL=http://localhost:8080/bff/callback \
   -e ALLOWED_USERS=alice@example.com \
   -e FORGE_URL=http://host.docker.internal:8081 \
   -e INDEX_URL=http://host.docker.internal:8082 \
@@ -102,6 +158,28 @@ docker run \
   -p 8080:8080 \
   fusion-bff:local
 ```
+
+### Run (bypass mode — no Keycloak)
+
+```bash
+echo "dummy" > /tmp/sa-token && echo "dummy" > /tmp/weave-sa-token
+
+docker run \
+  -e OIDC_BYPASS=true \
+  -e OIDC_BYPASS_BASE_URL=http://localhost:8080 \
+  -e OIDC_BYPASS_EMAIL=alice@example.com \
+  -e FORGE_URL=http://host.docker.internal:8081 \
+  -e INDEX_URL=http://host.docker.internal:8082 \
+  -e WEAVE_URL=http://host.docker.internal:8083 \
+  -e K8S_SA_TOKEN_PATH=/run/secrets/sa-token \
+  -e WEAVE_SA_TOKEN_PATH=/run/secrets/weave-sa-token \
+  -v /tmp/sa-token:/run/secrets/sa-token:ro \
+  -v /tmp/weave-sa-token:/run/secrets/weave-sa-token:ro \
+  -p 8080:8080 \
+  fusion-bff:local
+```
+
+Then open `http://localhost:8080/bff/login`.
 
 ---
 
@@ -133,7 +211,7 @@ kubectl create secret generic fusion-bff-secret \
   --from-literal=ALLOWED_USERS=alice@example.com,bob@example.com
 ```
 
-### Install with Helm
+### Install with Helm (normal mode)
 
 ```bash
 helm install fusion-bff ./deployment \
@@ -143,9 +221,46 @@ helm install fusion-bff ./deployment \
   --set image.pullPolicy=Never \
   --set config.oidcIssuerUrl=http://keycloak.default.svc.cluster.local:8080/realms/fusion \
   --set config.oidcClientId=fusion-gui \
+  --set config.oidcRedirectUrl=http://bff.fusion.local/bff/callback \
+  --set secret.oidcClientSecret=your-client-secret \
+  --set secret.sessionSecret=$(openssl rand -hex 32) \
   --set config.forgeUrl=http://fusion-forge.fusion.svc.cluster.local:8080 \
   --set config.indexUrl=http://fusion-index-backend.fusion.svc.cluster.local:8080 \
   --set config.weaveUrl=http://fusion-weave-api.fusion.svc.cluster.local:8082
+```
+
+### Install with Helm (bypass mode — no Keycloak)
+
+No Secret is needed. `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, and `OIDC_REDIRECT_URL` are all auto-derived from the bypass base URL.
+
+```bash
+helm install fusion-bff ./deployment \
+  --namespace fusion \
+  --set image.repository=fusion-bff \
+  --set image.tag=local \
+  --set image.pullPolicy=Never \
+  --set config.oidcBypass=true \
+  --set config.oidcBypassBaseUrl=http://bff.dev-fusion.local \
+  --set config.oidcBypassEmail=alice@example.com \
+  --set secret.create=false \
+  --set config.forgeUrl=http://fusion-forge.fusion.svc.cluster.local:8080 \
+  --set config.indexUrl=http://fusion-index-backend.fusion.svc.cluster.local:8080 \
+  --set config.weaveUrl=http://fusion-weave-api.fusion.svc.cluster.local:8082
+```
+
+To switch an existing bypass deployment back to real OIDC:
+
+```bash
+helm upgrade fusion-bff ./deployment \
+  --namespace fusion \
+  --reuse-values \
+  --set config.oidcBypass=false \
+  --set config.oidcIssuerUrl=http://keycloak.default.svc.cluster.local:8080/realms/fusion \
+  --set config.oidcClientId=fusion-gui \
+  --set config.oidcRedirectUrl=http://bff.fusion.local/bff/callback \
+  --set secret.create=true \
+  --set secret.oidcClientSecret=your-client-secret \
+  --set secret.sessionSecret=$(openssl rand -hex 32)
 ```
 
 Check rollout:
