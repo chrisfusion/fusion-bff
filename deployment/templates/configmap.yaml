@@ -22,6 +22,7 @@ data:
   CORS_ORIGINS: {{ .Values.config.corsOrigins | quote }}
   {{- end }}
   POST_LOGIN_REDIRECT_URL: {{ .Values.config.postLoginRedirectUrl | quote }}
+  RBAC_CONFIG_PATH: {{ .Values.config.rbacConfigPath | default "/etc/fusion-bff/rbac.yaml" | quote }}
   {{- if .Values.config.oidcBypass }}
   OIDC_BYPASS: "true"
   {{- if .Values.config.oidcBypassBaseUrl }}
@@ -30,6 +31,9 @@ data:
   OIDC_BYPASS_SUB: {{ .Values.config.oidcBypassSub | quote }}
   OIDC_BYPASS_EMAIL: {{ .Values.config.oidcBypassEmail | quote }}
   OIDC_BYPASS_NAME: {{ .Values.config.oidcBypassName | quote }}
+  {{- if .Values.config.oidcBypassGroups }}
+  OIDC_BYPASS_GROUPS: {{ .Values.config.oidcBypassGroups | quote }}
+  {{- end }}
   {{- else }}
   OIDC_ISSUER_URL: {{ required "config.oidcIssuerUrl is required when oidcBypass is false" .Values.config.oidcIssuerUrl | quote }}
   OIDC_CLIENT_ID: {{ required "config.oidcClientId is required when oidcBypass is false" .Values.config.oidcClientId | quote }}
@@ -40,4 +44,7 @@ data:
   {{- if .Values.config.oidcPublicAuthUrl }}
   OIDC_PUBLIC_AUTH_URL: {{ .Values.config.oidcPublicAuthUrl | quote }}
   {{- end }}
+  {{- end }}
+  {{- if .Values.config.dbDsn }}
+  DB_DSN: {{ .Values.config.dbDsn | quote }}
   {{- end }}

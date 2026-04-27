@@ -39,6 +39,9 @@ spec:
               - serviceAccountToken:
                   path: token
                   expirationSeconds: 3600
+        - name: rbac-config
+          configMap:
+            name: {{ include "fusion-bff.fullname" . }}-rbac
       containers:
         - name: fusion-bff
           image: {{ include "fusion-bff.image" . }}
@@ -79,6 +82,9 @@ spec:
               readOnly: true
             - name: weave-sa-token
               mountPath: /var/run/secrets/fusion-bff/weave
+              readOnly: true
+            - name: rbac-config
+              mountPath: /etc/fusion-bff
               readOnly: true
           {{- with .Values.livenessProbe }}
           livenessProbe:

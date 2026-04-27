@@ -4,5 +4,6 @@ package oidc
 type UserClaims struct {
 	Subject string
 	Email   string
-	Name    string // "name" claim; empty if not present in the token
+	Name    string     // "name" claim; empty if not present in the token
+	Groups  []string   // "groups" claim; Keycloak sends leading "/" which is stripped
 }

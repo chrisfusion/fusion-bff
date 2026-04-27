@@ -16,6 +16,7 @@ import (
 	"github.com/fusion-platform/fusion-bff/internal/allowlist"
 	"github.com/fusion-platform/fusion-bff/internal/config"
 	"github.com/fusion-platform/fusion-bff/internal/oidc"
+	"github.com/fusion-platform/fusion-bff/internal/rbac"
 	"github.com/fusion-platform/fusion-bff/internal/session"
 )
 
@@ -27,6 +28,7 @@ type AuthHandler struct {
 	store         session.Store
 	validator     oidc.TokenValidator
 	checker       allowlist.Checker
+	engine        *rbac.Engine
 	cookieName           string
 	cookieDomain         string // "" = no Domain attr, "auto" = derive from Host header
 	cookieSecure         bool
@@ -42,6 +44,7 @@ func NewAuthHandler(
 	store session.Store,
 	validator oidc.TokenValidator,
 	checker allowlist.Checker,
+	engine *rbac.Engine,
 ) *AuthHandler {
 	return &AuthHandler{
 		oauth2Cfg: &oauth2.Config{
@@ -63,6 +66,7 @@ func NewAuthHandler(
 		store:         store,
 		validator:     validator,
 		checker:       checker,
+		engine:        engine,
 		cookieName:           cfg.SessionCookieName,
 		cookieDomain:         cfg.SessionCookieDomain,
 		cookieSecure:         cfg.SessionCookieSecure,
@@ -127,14 +131,30 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 		return
 	}
 
+	roles, permissions, err := h.engine.Resolve(c.Request.Context(), claims.Subject, claims.Groups)
+	if err != nil {
+		log.Printf("callback: rbac resolve: %v", err)
+		// Non-fatal: user gets no roles/permissions but can still log in.
+		roles, permissions = nil, nil
+	}
+
+	resourcePerms, err := h.engine.ResolveResourcePermissions(c.Request.Context(), claims.Subject, claims.Groups, roles)
+	if err != nil {
+		log.Printf("callback: rbac resolve resource perms: %v", err)
+		resourcePerms = nil
+	}
+
 	sess := &session.Session{
-		Sub:          claims.Subject,
-		Email:        claims.Email,
-		Name:         claims.Name,
-		AccessToken:  tok.AccessToken,
-		RefreshToken: tok.RefreshToken,
-		IDToken:      rawIDToken,
-		ExpiresAt:    tok.Expiry,
+		Sub:                 claims.Subject,
+		Email:               claims.Email,
+		Name:                claims.Name,
+		Roles:               roles,
+		Permissions:         permissions,
+		ResourcePermissions: resourcePerms,
+		AccessToken:         tok.AccessToken,
+		RefreshToken:        tok.RefreshToken,
+		IDToken:             rawIDToken,
+		ExpiresAt:           tok.Expiry,
 	}
 
 	sid, err := h.store.Create(sess)
@@ -186,10 +206,25 @@ func (h *AuthHandler) UserInfo(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
 		return
 	}
+	roles := sess.Roles
+	if roles == nil {
+		roles = []string{}
+	}
+	permissions := sess.Permissions
+	if permissions == nil {
+		permissions = []string{}
+	}
+	resourcePerms := sess.ResourcePermissions
+	if resourcePerms == nil {
+		resourcePerms = []session.ResourcePermission{}
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"sub":   sess.Sub,
-		"email": sess.Email,
-		"name":  sess.Name,
+		"sub":                  sess.Sub,
+		"email":                sess.Email,
+		"name":                 sess.Name,
+		"roles":                roles,
+		"permissions":          permissions,
+		"resource_permissions": resourcePerms,
 	})
 }
 

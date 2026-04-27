@@ -37,11 +37,18 @@ type Config struct {
 	PostLoginRedirectURL   string        // POST_LOGIN_REDIRECT_URL — where to send the browser after successful login; default "/"
 
 	// Mock OIDC bypass — OIDC_BYPASS=true only; never set in production
-	OIDCBypass       bool   // OIDC_BYPASS — enable embedded mock OIDC server
-	OIDCBypassBaseURL string // OIDC_BYPASS_BASE_URL — BFF base URL as seen by the browser (default: http://localhost:{HTTP_PORT})
-	OIDCBypassSub    string // OIDC_BYPASS_SUB — default sub claim pre-filled in the login form
-	OIDCBypassEmail  string // OIDC_BYPASS_EMAIL — default email claim
-	OIDCBypassName   string // OIDC_BYPASS_NAME — default name claim
+	OIDCBypass        bool     // OIDC_BYPASS — enable embedded mock OIDC server
+	OIDCBypassBaseURL string   // OIDC_BYPASS_BASE_URL — BFF base URL as seen by the browser (default: http://localhost:{HTTP_PORT})
+	OIDCBypassSub     string   // OIDC_BYPASS_SUB — default sub claim pre-filled in the login form
+	OIDCBypassEmail   string   // OIDC_BYPASS_EMAIL — default email claim
+	OIDCBypassName    string   // OIDC_BYPASS_NAME — default name claim
+	OIDCBypassGroups  []string // OIDC_BYPASS_GROUPS — comma-separated groups pre-selected in the login form
+
+	// RBAC
+	RBACConfigPath string // RBAC_CONFIG_PATH — path to rbac.yaml; default ./rbac.yaml
+
+	// Database — required when rbac.yaml group_source is "db" or "both"
+	DBDSN string // DB_DSN — PostgreSQL connection string
 }
 
 func Load() (*Config, error) {
@@ -63,7 +70,17 @@ func Load() (*Config, error) {
 		cfg.OIDCBypassSub     = envOrDefault("OIDC_BYPASS_SUB", "dev-user")
 		cfg.OIDCBypassEmail   = envOrDefault("OIDC_BYPASS_EMAIL", "dev@local")
 		cfg.OIDCBypassName    = envOrDefault("OIDC_BYPASS_NAME", "Dev User")
+		if raw := os.Getenv("OIDC_BYPASS_GROUPS"); raw != "" {
+			for _, g := range strings.Split(raw, ",") {
+				if g = strings.TrimSpace(g); g != "" {
+					cfg.OIDCBypassGroups = append(cfg.OIDCBypassGroups, g)
+				}
+			}
+		}
 	}
+
+	cfg.RBACConfigPath = envOrDefault("RBAC_CONFIG_PATH", "./rbac.yaml")
+	cfg.DBDSN = os.Getenv("DB_DSN")
 
 	if !cfg.OIDCBypass {
 		if cfg.OIDCIssuerURL == "" {

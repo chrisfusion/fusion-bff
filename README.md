@@ -27,7 +27,9 @@ Pod-to-pod traffic (e.g. CI pipelines calling forge directly) bypasses the BFF e
 | Browser PKCE login | `/bff/login` → Keycloak redirect; `/bff/callback` exchanges code, validates id_token, sets HttpOnly `sid` cookie |
 | Session management | Server-side in-memory sessions; silent access token refresh when within 30 s of expiry |
 | Logout | Revokes refresh token, deletes session, clears cookie, redirects to Keycloak `end_session` |
-| User info | `GET /bff/userinfo` returns `{sub, email, name}` from the active session |
+| User info | `GET /bff/userinfo` returns `{sub, email, name, roles, permissions, resource_permissions}` from the active session |
+| RBAC | Config-driven roles + permissions (`rbac.yaml`); route-level enforcement via `APIAuth` middleware; resource-scoped grants in PostgreSQL |
+| Admin API | `/bff/admin/group-roles` (CRUD), `/bff/admin/resource-permissions` (CRUD), `/bff/admin/rbac-config` (read) — require `admin:roles:manage` |
 | OIDC JWT validation | RS256 signature check against JWKS; configurable cache TTL; Bearer fallback for service-to-service calls |
 | User allowlist | Match `sub` or `email` claim; empty list = any authenticated user |
 | Identity forwarding | `X-User-ID` (sub), `X-User-Email` injected on every upstream request |
@@ -123,6 +125,13 @@ All configuration is via environment variables.
 | `SESSION_COOKIE_SECURE` | `false` | Set `true` in production (HTTPS) |
 | `SESSION_MAX_AGE` | `8h` | Maximum session lifetime |
 
+### RBAC
+
+| Variable | Default | Description |
+|---|---|---|
+| `RBAC_CONFIG_PATH` | `./rbac.yaml` | Path to the RBAC config file (ConfigMap-mounted in K8s) |
+| `DB_DSN` | — | PostgreSQL DSN — required when `rbac.yaml` `group_source` is `db` or `both` |
+
 ### Development bypass (mock OIDC) — never use in production
 
 | Variable | Default | Description |
@@ -132,6 +141,7 @@ All configuration is via environment variables.
 | `OIDC_BYPASS_SUB` | `dev-user` | Default `sub` claim pre-filled in the mock login form |
 | `OIDC_BYPASS_EMAIL` | `dev@local` | Default `email` claim pre-filled in the mock login form |
 | `OIDC_BYPASS_NAME` | `Dev User` | Default display name pre-filled in the mock login form |
+| `OIDC_BYPASS_GROUPS` | — | Comma-separated groups pre-selected in the mock login form |
 
 When `OIDC_BYPASS=true`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, and `OIDC_REDIRECT_URL` are all auto-derived and do not need to be set.
 

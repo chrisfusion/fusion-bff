@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fusion-bff.fullname" . }}-rbac
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fusion-bff.labels" . | nindent 4 }}
+data:
+  rbac.yaml: |
+    {{- .Files.Get "rbac.yaml" | nindent 4 }}

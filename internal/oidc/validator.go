@@ -3,6 +3,7 @@ package oidc
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
@@ -32,17 +33,25 @@ func (v *oidcValidator) Validate(ctx context.Context, rawToken string) (*UserCla
 	}
 
 	var raw struct {
-		Sub   string `json:"sub"`
-		Email string `json:"email"`
-		Name  string `json:"name"`
+		Sub    string   `json:"sub"`
+		Email  string   `json:"email"`
+		Name   string   `json:"name"`
+		Groups []string `json:"groups"`
 	}
 	if err := token.Claims(&raw); err != nil {
 		return nil, fmt.Errorf("extracting claims: %w", err)
+	}
+
+	// Keycloak sends groups with a leading "/" (e.g. "/team-data"); normalise to bare names.
+	groups := make([]string, 0, len(raw.Groups))
+	for _, g := range raw.Groups {
+		groups = append(groups, strings.TrimLeft(g, "/"))
 	}
 
 	return &UserClaims{
 		Subject: raw.Sub,
 		Email:   raw.Email,
 		Name:    raw.Name,
+		Groups:  groups,
 	}, nil
 }

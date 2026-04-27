@@ -1,0 +1,55 @@
+# group_source controls the GroupResolver implementation.
+# jwt  = groups from Keycloak JWT "groups" claim (Stage 1, default)
+# db   = groups from fusion-platform DB by user sub (Stage 2)
+# both = union of jwt + db (Stage 2)
+group_source: db
+
+group_roles:
+  platform-admin:  [admin]
+  team-data:       [engineer]
+  team-ml:         [engineer]
+  platform-viewer: [viewer]
+
+role_permissions:
+  admin:
+    - index:artifacts:read
+    - index:artifacts:write
+    - index:artifacts:delete
+    - index:versions:write
+    - index:versions:delete
+    - index:types:manage
+    - forge:builds:read
+    - forge:builds:create
+    - admin:users:view
+    - admin:roles:manage
+  engineer:
+    - index:artifacts:read
+    - index:artifacts:write
+    - index:versions:write
+    - index:types:manage
+    - forge:builds:read
+    - forge:builds:create
+    - admin:users:view
+  viewer:
+    - index:artifacts:read
+    - forge:builds:read
+
+# Granting index:artifacts:delete on a resource also grants index:versions:delete on it.
+permission_implies:
+  index:artifacts:delete: [index:versions:delete]
+
+# First matching rule wins. * matches one path segment; trailing * matches the rest.
+# resource_type enables resource-scoped fallback checks (first * in path = resource ID).
+route_permissions:
+  - { method: DELETE, path: /api/index/api/v1/artifacts/*/versions/*, permission: index:versions:delete, resource_type: artifact }
+  - { method: DELETE, path: /api/index/api/v1/artifacts/*,            permission: index:artifacts:delete, resource_type: artifact }
+  - { method: POST,   path: /api/index/api/v1/artifacts/*/versions/*/files, permission: index:versions:write }
+  - { method: POST,   path: /api/index/api/v1/artifacts/*/versions,   permission: index:versions:write }
+  - { method: POST,   path: /api/index/api/v1/artifacts,              permission: index:artifacts:write }
+  - { method: PUT,    path: /api/index/api/v1/artifacts/*/tags/*,     permission: index:artifacts:write }
+  - { method: DELETE, path: /api/index/api/v1/artifacts/*/tags/*,     permission: index:artifacts:write }
+  - { method: "*",    path: /api/index/api/v1/types*,                 permission: index:types:manage }
+  - { method: GET,    path: /api/index/*,                             permission: index:artifacts:read }
+  - { method: POST,   path: /api/forge/api/v1/venvs/validate,         permission: forge:builds:create }
+  - { method: POST,   path: /api/forge/api/v1/venvs,                  permission: forge:builds:create }
+  - { method: GET,    path: /api/forge/*,                             permission: forge:builds:read }

@@ -2,146 +2,157 @@
 
 ## Overview
 
-`fusion-bff` is a thin, stateless reverse proxy. Its only responsibilities are:
+`fusion-bff` is a reverse proxy that adds browser-safe authentication and RBAC enforcement between the Vue GUI and the internal platform services. Its responsibilities:
 
-1. Validate an OIDC JWT issued to the GUI
-2. Check the resolved identity against an allowlist
-3. Replace the inbound JWT with the BFF's own K8s service account token
-4. Forward the resolved user identity as trusted headers
-5. Proxy the request to the appropriate upstream service
-
-There is no database, no session state, and no business logic.
+1. Run the OIDC PKCE login flow and maintain server-side sessions (HttpOnly cookie)
+2. Resolve user identity to roles and permissions via the RBAC engine
+3. Enforce route-level permission checks on all `/api/*` requests
+4. Replace the inbound session cookie / Bearer token with the BFF's own K8s service account token
+5. Forward the resolved user identity as trusted headers
+6. Expose an admin API for managing group→role assignments and resource-scoped permission grants
 
 ---
 
 ## Component map
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│  fusion-bff (this service)                                 │
-│                                                            │
-│  cmd/server/main.go                                        │
-│    └─ config.Load()             reads env vars             │
-│    └─ if OIDCBypass:                                       │
-│         mockoidc.New()          RSA key + mock server      │
-│         mockoidc.Validator()    in-process JWT verifier    │
-│         allowlist.New(nil)      allow-all checker          │
-│       else:                                                 │
-│         oidc.NewValidator()     JWKS-backed JWT verifier   │
-│         allowlist.New()         in-memory sub/email checker│
-│    └─ token.NewFileProvider() ×2  (saToken, weaveSAToken) │
-│    └─ proxy.NewUpstreamProxy() ×3  (forge, index, weave)  │
-│    └─ api.NewRouter()           gin engine                 │
-│    └─ http.Server.ListenAndServe()                         │
-│                                                            │
-│  internal/api/router.go                                    │
-│    /health  /livez  /readyz   → handler.Health (no auth)  │
-│    /api/forge/*path           → middleware.Auth → forge    │
-│    /api/index/*path           → middleware.Auth → index    │
-│    /api/weave/*path           → middleware.Auth → weave    │
-│                                                            │
-│  internal/api/middleware/auth.go                           │
-│    1. Extract Bearer token from Authorization header       │
-│    2. oidc.Validate()  →  UserClaims{Subject, Email}      │
-│    3. allowlist.Permitted(sub, email)                      │
-│    4. proxy.SetUserContext(r, sub, email)                  │
-│                                                            │
-│  internal/proxy/upstream.go                               │
-│    Handler()  pre-fetches SA token, stores in ctx         │
-│    Rewrite()  strips /api/{forge|index|weave} prefix      │
-│               deletes inbound X-User-ID / X-User-Email    │
-│               sets Authorization: Bearer <SA token>       │
-│               sets X-User-ID / X-User-Email from ctx      │
-└────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  fusion-bff                                                      │
+│                                                                  │
+│  cmd/server/main.go                                              │
+│    └─ config.Load()              reads env vars                  │
+│    └─ rbac.LoadConfig()          loads rbac.yaml                 │
+│    └─ if OIDCBypass:                                             │
+│         mockoidc.New()           RSA key + mock server           │
+│         mockoidc.Validator()     in-process JWT verifier         │
+│         allowlist.New(nil)       allow-all checker               │
+│       else:                                                      │
+│         oidc.NewValidator()      JWKS-backed JWT verifier        │
+│         allowlist.New()          in-memory sub/email checker     │
+│    └─ db.Open() + db.Migrate()   if group_source != jwt          │
+│    └─ rbac.NewEngine(cfg, pool)  picks GroupRoleStore            │
+│    └─ token.NewFileProvider() ×2 (saToken, weaveSAToken)        │
+│    └─ proxy.NewUpstreamProxy() ×3  (forge, index, weave)        │
+│    └─ api.NewRouter()            gin engine                      │
+│    └─ http.Server.ListenAndServe()                               │
+│                                                                  │
+│  internal/api/router.go                                          │
+│    /health  /livez  /readyz     → handler.Health (no auth)      │
+│    /bff/login|callback|logout   → handler.Auth (PKCE flow)      │
+│    /bff/userinfo                → handler.Auth (session read)   │
+│    /bff/admin/*                 → middleware.RequirePermission   │
+│                                   + handler.Admin               │
+│    /api/forge/*path             → middleware.APIAuth → forge     │
+│    /api/index/*path             → middleware.APIAuth → index     │
+│    /api/weave/*path             → middleware.APIAuth → weave     │
+│                                                                  │
+│  internal/api/middleware/apiauth.go                              │
+│    1. sid cookie present? → session.Store.Get() → Session        │
+│       (refresh access token if within 30 s of expiry)           │
+│    2. No session? → fall back to Bearer <OIDC JWT>              │
+│    3. rbac.RoutePermission(rules, method, path)                  │
+│       → 403 if required permission not in session.Permissions   │
+│    4. proxy.SetUserContext(r, sub, email)                        │
+│                                                                  │
+│  internal/rbac/engine.go                                         │
+│    Resolve(ctx, sub, jwtGroups)                                  │
+│      └─ GroupRoleStore.RolesForGroup() per group                 │
+│           StaticGroupRoleStore  ← rbac.yaml (group_source: jwt) │
+│           DBGroupRoleStore      ← postgres  (group_source: db)  │
+│           MergedGroupRoleStore  ← both      (group_source: both)│
+│      └─ cfg.RolePermissions[role] → flatten to permissions      │
+│      └─ session.Roles, session.Permissions populated            │
+│                                                                  │
+│  internal/proxy/upstream.go                                      │
+│    Handler()  pre-fetches SA token, stores in ctx               │
+│    Rewrite()  strips /api/{forge|index|weave} prefix            │
+│               deletes inbound X-User-ID / X-User-Email          │
+│               sets Authorization: Bearer <SA token>             │
+│               sets X-User-ID / X-User-Email from ctx            │
+└──────────────────────────────────────────────────────────────────┘
           │               │               │
           ▼               ▼               ▼
   fusion-forge:8080  fusion-index-  fusion-weave-api:8082
-  (SA token +         backend:8080   (SA token via TokenReview
-   X-User-ID,         (same)          + X-User-ID, X-User-Email;
-   X-User-Email)                       RBAC role from SA label)
 ```
 
 ---
 
-## Request lifecycle
+## Request lifecycle — browser session
 
 ```
 GUI
- │  GET /api/forge/v1/venvs
- │  Authorization: Bearer <OIDC JWT>
+ │  GET /api/index/api/v1/artifacts
+ │  Cookie: sid=<session-id>
  │
  ▼
-gin.Recovery + gin.Logger + middleware.RequestID
- │
- ▼
-middleware.Auth
- ├─ parse Bearer token from header
- ├─ oidcValidator.Validate()
- │    └─ cachingKeySet.VerifySignature()   (JWKS, cached)
- │    └─ check exp, iss, aud
- │    └─ extract sub + email
- ├─ staticChecker.Permitted(sub, email)
- │    └─ 403 if denied
+middleware.APIAuth
+ ├─ session.Store.Get(sid)        → Session{ Sub, Roles, Permissions, ... }
+ │    └─ token refresh if near expiry
+ ├─ rbac.RoutePermission(rules, GET, /api/index/.../artifacts)
+ │    → required: "index:artifacts:read"
+ ├─ "index:artifacts:read" ∈ session.Permissions?
+ │    yes → continue   /   no → 403
  └─ proxy.SetUserContext(r, sub, email)
  │
  ▼
 proxy.UpstreamProxy.Handler()
- ├─ token.FileProvider.Token()             (disk read, cached)
- │    └─ 502 on error
- ├─ store SA token in ctx
+ ├─ token.FileProvider.Token()    (disk read, cached)
  └─ httputil.ReverseProxy.ServeHTTP()
       └─ Rewrite:
-           strip /api/forge prefix  →  /v1/venvs
-           del X-User-ID, X-User-Email, Authorization (anti-spoofing)
+           strip /api/index prefix  →  /api/v1/artifacts
+           del X-User-ID, X-User-Email, Authorization
            set Authorization: Bearer <SA token>
            set X-User-ID: <sub>
            set X-User-Email: <email>
  │
  ▼
-fusion-forge  GET /v1/venvs
-              Authorization: Bearer <SA token>
-              X-User-ID: alice-sub-123
-              X-User-Email: alice@example.com
+fusion-index-backend  GET /api/v1/artifacts
 ```
 
 ---
 
-## Key design decisions
+## RBAC model
 
-### No OIDC provider discovery at startup
+```
+Keycloak groups (JWT "groups" claim)
+      │
+      ▼
+GroupRoleStore.RolesForGroup(group)
+      │  StaticGroupRoleStore  ← rbac.yaml group_roles map
+      │  DBGroupRoleStore      ← group_role_assignments table
+      │  MergedGroupRoleStore  ← union of both
+      ▼
+Roles[]  →  cfg.RolePermissions[role]  →  Permissions[]
+      │
+      ├── stored in session on login / token refresh
+      └── returned to frontend via GET /bff/userinfo
+                { sub, email, name, roles, permissions, resource_permissions }
+```
 
-`NewValidator` does not call the OIDC discovery endpoint (`/.well-known/openid-configuration`). It accepts an explicit `OIDC_JWKS_URL`, which defaults to the Keycloak convention (`{issuer}/protocol/openid-connect/certs`). This avoids a startup dependency on the OIDC provider being reachable and makes the service compatible with any OIDC provider without special casing.
+### Resource-scoped permissions
 
-### JWKS caching with force-refresh
+In addition to global permissions, the BFF stores per-resource grants in `resource_permissions` table:
 
-`cachingKeySet` wraps `coreos/go-oidc`'s `RemoteKeySet`. The cache is invalidated after `OIDC_JWKS_CACHE_TTL` (default 15 min). A background goroutine is not used — the refresh happens synchronously on the first request after TTL expiry. This keeps the implementation simple and avoids background goroutine lifecycle management.
+```sql
+subject_type TEXT  -- "user" | "group" | "role"
+subject      TEXT  -- identity name / OIDC sub
+permission   TEXT  -- e.g. "index:artifacts:delete"
+resource_type TEXT -- "artifact" | "venv"
+resource_id  TEXT  -- the resource's numeric ID as string
+```
 
-### SA token pre-fetched before proxying
+These are resolved at login and embedded in the `userinfo` response as `resource_permissions[]`. The frontend's `usePermission().can(permission, resourceId)` checks global permissions first, then falls back to the resource-scoped list.
 
-`httputil.ReverseProxy.Rewrite` cannot return an error. To handle SA token fetch failures cleanly, the token is fetched in `Handler()` before `rp.ServeHTTP` is called. On failure the handler returns `502 upstream unavailable` immediately.
+---
 
-### Separate SA token per upstream (audience isolation)
+## Permission strings
 
-forge/index and fusion-weave use distinct projected SA tokens:
-
-| Volume | Audience | Used for |
-|---|---|---|
-| `sa-token` | `fusion-bff` | forge, index (dev mode; no token validation on their side yet) |
-| `weave-sa-token` | *(none — kube-apiserver default)* | fusion-weave (TokenReview validates token against kube-apiserver) |
-
-A projected token with `audience: fusion-bff` fails Kubernetes TokenReview when no audience is specified in the review request — the API server validates the token against its own audiences, which do not include `fusion-bff`. Omitting the audience in the projected token source makes it valid for the kube-apiserver and thus compatible with TokenReview.
-
-### User identity via `context.Context`, not Gin context
-
-The proxy `Rewrite` function receives `*httputil.ProxyRequest`, not a Gin context. Passing identity through `context.WithValue` on the `*http.Request` avoids importing Gin into the `proxy` package and keeps the dependency graph clean.
-
-### Anti-spoofing header deletion
-
-The `Rewrite` function unconditionally deletes `X-User-ID`, `X-User-Email`, and `Authorization` from the outbound request before setting them from the validated context. This ensures a malicious client cannot inject trusted identity headers.
-
-### `staticChecker` is not wrapped in `WithTTLCache`
-
-`WithTTLCache` is designed for checkers that perform I/O (e.g. a database lookup). The static in-memory checker has no I/O cost — adding a TTL cache would only introduce unnecessary complexity and memory allocation.
+```
+index:artifacts:read      index:artifacts:write    index:artifacts:delete
+index:versions:write      index:versions:delete    index:types:manage
+forge:builds:read         forge:builds:create
+admin:users:view          admin:roles:manage
+```
 
 ---
 
@@ -152,12 +163,12 @@ cmd/server/          Entry point — wires all components and starts the HTTP se
 internal/
   config/            Env var loading; all time.Duration values parsed here
   oidc/
-    claims.go        UserClaims{Subject, Email, Name}
+    claims.go        UserClaims{Subject, Email, Name, Groups}
     jwks.go          cachingKeySet — JWKS fetch + TTL invalidation
     validator.go     TokenValidator interface + oidcValidator (production)
   mockoidc/          Embedded mock OIDC — active only when OIDC_BYPASS=true
-    server.go        RSA keypair, login form, auth code store, mock route handlers
-    validator.go     mockValidator — verifies JWTs using the in-memory key (no HTTP)
+    server.go        RSA keypair, login form with group selector, auth code store
+    validator.go     mockValidator — verifies JWTs using the in-memory key
   allowlist/
     allowlist.go     Checker interface, staticChecker, WithTTLCache wrapper
   token/
@@ -165,13 +176,25 @@ internal/
   proxy/
     upstream.go      UpstreamProxy (shared by forge, index, weave), SetUserContext
   session/
-    session.go       Session struct, InMemoryStore, PKCE pending state, CookieDomain helper
+    session.go       Session{Sub,Email,Name,Roles,Permissions,ResourcePermissions}, InMemoryStore
+  rbac/
+    config.go        RBACConfig, RouteRule, LoadConfig
+    engine.go        Engine — resolves groups → roles → permissions
+    store.go         GroupRoleStore interface
+    static_store.go  StaticGroupRoleStore (rbac.yaml)
+    db_store.go      DBGroupRoleStore (postgres)
+    merged_store.go  MergedGroupRoleStore (both)
+    route.go         RoutePermission — first-match rule evaluation
+  db/
+    db.go            Open + Migrate (group_role_assignments, resource_permissions tables)
+    queries.go       CRUD for both tables + LoadAllGroupRoles
   api/
     handler/
       health.go      /health /livez /readyz
       auth.go        /bff/login, /bff/callback, /bff/logout, /bff/userinfo
+      admin.go       /bff/admin/group-roles, /bff/admin/resource-permissions, /bff/admin/rbac-config
     middleware/
-      apiauth.go     /api/* combined middleware: session cookie + Bearer fallback
+      apiauth.go     /api/* — session cookie + Bearer fallback + route permission check
       cors.go        CORS middleware
       requestid.go   X-Request-ID propagation
     router.go        Gin route registration
@@ -182,53 +205,32 @@ flux/                Flux GitOps manifests (3 environments)
 
 ---
 
-## Extension points
+## Key design decisions
 
-### Swap the allowlist backend
+### SA token pre-fetched before proxying
 
-The `allowlist.Checker` interface has a single method:
+`httputil.ReverseProxy.Rewrite` cannot return an error. To handle SA token fetch failures cleanly, the token is fetched in `Handler()` before `rp.ServeHTTP` is called. On failure the handler returns `502 upstream unavailable` immediately.
 
-```go
-type Checker interface {
-    Permitted(sub, email string) bool
-}
-```
+### Separate SA token per upstream (audience isolation)
 
-To back the allowlist with a database:
+| Volume | Audience | Used for |
+|---|---|---|
+| `sa-token` | `fusion-bff` | forge, index |
+| `weave-sa-token` | *(none)* | fusion-weave (TokenReview validates against kube-apiserver) |
 
-1. Implement `Checker` in a new package (e.g. `internal/allowlist/pgchecker`)
-2. Wrap it with `allowlist.WithTTLCache(cfg.AllowlistCacheTTL, pgChecker)` in `main.go`
-3. No changes needed in the auth middleware or router
+A projected token with `audience: fusion-bff` fails Kubernetes TokenReview — the API server validates against its own audiences. Omitting the audience makes it valid for TokenReview.
 
-The `WithTTLCache` wrapper caches `(sub, email)` results for `ALLOWLIST_CACHE_TTL` (default 30 s), so a permission change takes at most one TTL interval to propagate.
+### User identity via `context.Context`, not Gin context
 
-### Add a new upstream service
+The proxy `Rewrite` function receives `*httputil.ProxyRequest`, not a Gin context. Passing identity through `context.WithValue` avoids importing Gin into the `proxy` package.
 
-fusion-weave is an example of this pattern. The general steps:
+### Anti-spoofing header deletion
 
-1. Add `NEWSERVICE_URL` (and optionally `NEWSERVICE_SA_TOKEN_PATH`) to `config.go`
-2. Construct `proxy.NewUpstreamProxy(cfg.NewServiceURL, "/api/newservice", saToken)` in `main.go`
-3. Register `api.Any("/api/newservice/*path", newServiceProxy.Handler())` in `router.go`
+`Rewrite` unconditionally deletes `X-User-ID`, `X-User-Email`, and `Authorization` before setting them from the validated context. A malicious client cannot inject trusted identity headers.
 
-If the upstream validates the SA token via K8s TokenReview (like fusion-weave), use a separate projected volume with no audience restriction for that upstream's token. Add `fusion-platform.io/role: <role>` to the BFF ServiceAccount so the upstream grants the correct RBAC level.
+### Resource permissions at login, not per-request
 
-### Replace the OIDC validator
-
-`oidc.TokenValidator` is an interface. A custom implementation (e.g. introspection endpoint, symmetric JWT) can be swapped in `main.go` without touching the auth middleware.
-
-`mockoidc.Server` in `internal/mockoidc/` is a concrete example of this pattern: it implements `TokenValidator` using an in-memory RSA key and registers its own routes on the Gin engine. The existing `AuthHandler`, `APIAuth` middleware, and router are completely unaware of the substitution.
-
-### Mock OIDC bypass
-
-When `OIDC_BYPASS=true`, `main.go` substitutes:
-
-| Production | Bypass |
-|---|---|
-| `oidc.NewValidator(...)` | `mockoidc.New(cfg).Validator()` |
-| `allowlist.New(cfg.AllowedUsers)` | `allowlist.New(nil)` (allow all) |
-| No extra routes | `mockoidc.RegisterRoutes(router)` |
-
-Everything downstream (session creation, cookie handling, proxy forwarding, identity headers) is identical between bypass and production mode.
+Resource-scoped grants are small enough to embed in the `userinfo` response at login. No per-request DB lookup is needed in components — the frontend checks `auth.user.resource_permissions` locally.
 
 ---
 
@@ -237,11 +239,10 @@ Everything downstream (session creation, cookie handling, proxy forwarding, iden
 | Threat | Mitigation |
 |---|---|
 | Forged OIDC JWT | RS256 signature verified against JWKS; `exp`, `iss`, `aud` all checked |
-| Allowlist bypass | `sub` and `email` matching both required; anti-spoofing header deletion |
+| Allowlist bypass | `sub` and `email` matching; anti-spoofing header deletion |
 | Header injection by client | `X-User-ID`, `X-User-Email`, `Authorization` unconditionally deleted before setting |
 | SA token exposure | Never returned to client; only used on the server-to-server leg |
-| JWKS poisoning | BFF fetches JWKS from the configured URL; clients cannot influence the key set |
-| Container breakout | Distroless image, `readOnlyRootFilesystem: true`, runs as non-root (`nonroot` distroless user) |
-| OIDC bypass misuse | `OIDC_BYPASS=true` disables all real token validation; guard with Helm `required` on prod values files and CI lint rules; startup log prints a loud `[WARNING]` |
-| SA token audience abuse | forge/index token is audience-scoped to `fusion-bff`; weave token is separate and cannot be used to impersonate the BFF to other services |
-| Weave RBAC escalation | BFF SA label `fusion-platform.io/role: admin` is set by Helm; token is never exposed to clients |
+| Privilege escalation via route | `rbac.RoutePermission` enforced on every `/api/*` request; 403 if permission missing |
+| RBAC bypass via session | Roles/permissions stored in server-side session — client cannot modify them |
+| OIDC bypass misuse | `OIDC_BYPASS=true` prints a loud `[WARNING]` at startup; guard with Helm `required` in prod |
+| Container breakout | Distroless image, `readOnlyRootFilesystem: true`, runs as non-root |

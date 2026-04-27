@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"context"
+	"log"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/fusion-platform/fusion-bff/internal/config"
 	"github.com/fusion-platform/fusion-bff/internal/oidc"
 	"github.com/fusion-platform/fusion-bff/internal/proxy"
+	"github.com/fusion-platform/fusion-bff/internal/rbac"
 	"github.com/fusion-platform/fusion-bff/internal/session"
 )
 
@@ -21,14 +24,21 @@ import (
 // populated from the stored session (with a silent token refresh if the access token is
 // within 30 seconds of expiry). If no valid session cookie is found the middleware falls
 // back to the existing Bearer token path, preserving service-to-service auth unchanged.
+//
+// After authenticating the caller, the middleware checks whether the route requires a
+// specific permission (via the RBAC engine). Requests lacking the required permission
+// are rejected with 403.
 func APIAuth(
 	store session.Store,
 	refreshFn func(ctx context.Context, refreshToken string) (*oauth2.Token, error),
 	validator oidc.TokenValidator,
 	checker allowlist.Checker,
 	cfg *config.Config,
+	engine *rbac.Engine,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		match := rbac.MatchRoute(engine.RoutePermissions(), c.Request.Method, c.Request.URL.Path)
+
 		if sid, err := c.Cookie(cfg.SessionCookieName); err == nil && sid != "" {
 			if sess, serr := store.Get(sid); serr == nil {
 				// Silently refresh when the access token is within 30 seconds of expiry.
@@ -49,6 +59,15 @@ func APIAuth(
 					// Ignore update error — if the session was concurrently deleted,
 					// the next request will re-authenticate through the Bearer fallback.
 					_ = store.Update(sess)
+				}
+				if match.Permission != "" {
+					hasGlobal := slices.Contains(sess.Permissions, match.Permission)
+					hasScoped := match.ResourceType != "" &&
+						hasResourcePerm(sess.ResourcePermissions, match.Permission, match.ResourceType, match.ResourceID)
+					if !hasGlobal && !hasScoped {
+						c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+						return
+					}
 				}
 				c.Request = proxy.SetUserContext(c.Request, sess.Sub, sess.Email)
 				c.Next()
@@ -73,9 +92,45 @@ func APIAuth(
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
+
+		if match.Permission != "" {
+			_, perms, rerr := engine.Resolve(c.Request.Context(), claims.Subject, claims.Groups)
+			if rerr != nil {
+				log.Printf("apiauth: rbac resolve for bearer: %v", rerr)
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+				return
+			}
+			hasGlobal := slices.Contains(perms, match.Permission)
+			if !hasGlobal && match.ResourceType != "" {
+				resourcePerms, rerr := engine.ResolveResourcePermissions(
+					c.Request.Context(), claims.Subject, claims.Groups, perms)
+				if rerr != nil {
+					log.Printf("apiauth: rbac resolve resource perms for bearer: %v", rerr)
+					c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+					return
+				}
+				if !hasResourcePerm(resourcePerms, match.Permission, match.ResourceType, match.ResourceID) {
+					c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+					return
+				}
+			} else if !hasGlobal {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+				return
+			}
+		}
+
 		c.Request = proxy.SetUserContext(c.Request, claims.Subject, claims.Email)
 		c.Next()
 	}
+}
+
+func hasResourcePerm(rps []session.ResourcePermission, permission, resourceType, resourceID string) bool {
+	for _, rp := range rps {
+		if rp.Permission == permission && rp.ResourceType == resourceType && rp.ResourceID == resourceID {
+			return true
+		}
+	}
+	return false
 }
 
 // clearSessionCookie overwrites the session cookie with an expired one to instruct

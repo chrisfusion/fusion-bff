@@ -2,12 +2,13 @@
 
 Backend for Frontend for the fusion platform GUI.
 
-fusion-bff sits between the Vue.js web GUI and the internal fusion platform services (fusion-forge, fusion-index, fusion-weave). It validates OIDC tokens from human users, enforces an allowlist, and forwards requests to backend services using its own Kubernetes service account token with the authenticated user identity passed as a trusted header.
+fusion-bff sits between the Vue.js web GUI and the internal fusion platform services (fusion-forge, fusion-index, fusion-weave). It validates OIDC tokens from human users, enforces an allowlist, resolves RBAC roles and permissions, and forwards requests to backend services using its own Kubernetes service account token with the authenticated user identity passed as a trusted header.
 
 ## Purpose
 
 - **OIDC authentication** — validate JWT tokens issued by the configured OIDC provider (Keycloak, Dex, etc.)
 - **User allowlist** — reject authenticated users who are not permitted to use the platform
+- **RBAC enforcement** — resolve Keycloak groups → roles → permissions; enforce per-route permission checks on all `/api/*` traffic
 - **Identity forwarding** — pass the resolved user identity (`X-User-ID`, `X-User-Email`) to upstream services as trusted headers
 - **Proxy / routing** — forward API calls to fusion-forge, fusion-index, and fusion-weave; optionally aggregate responses
 - **Pod-to-pod traffic is not routed through the BFF** — Kubernetes SA TokenReview auth on forge/index handles that path directly
@@ -35,19 +36,24 @@ Namespace pattern: `dev-fusion` / `dev-staging-fusion` / `prod-fusion`
 Browser login (PKCE):
   GET /bff/login → redirect to Keycloak (OIDC_PUBLIC_AUTH_URL, code_challenge S256)
   GET /bff/callback?code=…&state=… → exchange code (OIDC_ISSUER_URL, cluster-internal),
-       validate id_token, check allowlist → set HttpOnly sid cookie, redirect to /
+       validate id_token, check allowlist,
+       resolve groups → roles → permissions (rbac.Engine),
+       store roles+permissions in session → set HttpOnly sid cookie, redirect to /
   POST /bff/logout → revoke refresh token, delete session, clear cookie, redirect to end_session
-  GET /bff/userinfo → returns {sub, email, name} from session
+  GET /bff/userinfo → returns {sub, email, name, roles, permissions} from session
 
 /api/* middleware (APIAuth):
   1. Cookie sid present → load session; silent refresh if access token within 30 s of expiry
-  2. No valid cookie → fall back to Bearer <OIDC JWT> (service-to-service path, unchanged)
+     → check RoutePermission(rules, method, path); if required perm not in session.Permissions → 403
+  2. No valid cookie → fall back to Bearer <OIDC JWT>
+     → resolve groups → permissions on-the-fly; enforce route permission check
   3. Either path → set X-User-ID / X-User-Email on upstream request
 
 Notes:
   - OIDC_ISSUER_URL (cluster-internal) used for token/revoke calls; OIDC_PUBLIC_AUTH_URL for browser redirects
   - Session state is in-memory (InMemoryStore) — single-pod only, no distributed support
   - CookieDomain "auto" derives .parent-domain from Host header for subdomain cookie sharing
+  - Keycloak sends groups with a leading "/" (e.g. "/team-data") — validator strips it to bare name
 ```
 
 ### Pod-to-pod flow (existing, not in this service)
@@ -55,6 +61,46 @@ Notes:
 Pod → Bearer <K8s SA token> → fusion-forge / fusion-index
   TokenReview validates SA directly — no BFF involved
 ```
+
+## RBAC design
+
+```
+Keycloak JWT "groups" claim  (e.g. ["/team-data", "/platform-admin"])
+  └─ normalise: strip leading "/"
+        │
+        ▼
+   GroupResolver (internal/rbac/engine.go)
+        │  Stage 1: JWTResolver — pass groups through unchanged
+        │  Stage 2: DBResolver / MergedResolver (not yet built)
+        ▼
+   group_roles map  (rbac.yaml)
+        │
+        ▼
+   role_permissions map  (rbac.yaml)
+        │
+        ▼
+   Session { Roles[], Permissions[] }   (stored at login time)
+        │
+        ├── enforced in APIAuth middleware per route
+        └── exposed via GET /bff/userinfo → frontend
+```
+
+### rbac.yaml
+Loaded from `RBAC_CONFIG_PATH` (default `./rbac.yaml`). In K8s, mount as a ConfigMap volume.
+Top-level keys: `group_source` (`jwt`|`db`|`both`), `group_roles`, `role_permissions`, `route_permissions`.
+
+`route_permissions` is an ordered list of `{method, path, permission, resource_type?}` rules — first match wins.
+Path patterns: `*` in the middle matches one segment; trailing `*` matches one or more; `<prefix>*` as last segment matches any segment starting with that prefix.
+`permission_implies` map: granting a permission also grants listed implied permissions on the same resource (e.g. `index:artifacts:delete` → `index:versions:delete`).
+`resource_type` on a rule enables resource-scoped fallback: the first `*` capture in the path is used as `ResourceID` for the `hasResourcePerm()` check in `apiauth.go`.
+
+**`deployment/rbac.yaml` sync**: Helm chart reads from `deployment/rbac.yaml` via `.Files.Get`, NOT from the repo root. Always update BOTH when changing `rbac.yaml`. Deploying with only the root updated silently reverts the configmap to the stale chart copy.
+
+### Extension points
+- **Stage 2 (built)**: `GroupRoleStore` interface in `internal/rbac/store.go` replaces the yaml `group_roles` map at runtime. `StaticGroupRoleStore` (yaml), `DBGroupRoleStore` (postgres), `MergedGroupRoleStore` (union). Switch `group_source: db` or `both` in `rbac.yaml`. Requires `DB_DSN`. Admin API at `GET/POST/DELETE /bff/admin/group-roles` (requires `admin:roles:manage`).
+- **`group_source: db` bootstrap gotcha**: DB is empty on first deploy — nobody has admin role to seed it. Use `group_source: both` (yaml as baseline + DB extras) or manually `INSERT INTO group_role_assignments` via `kubectl exec` on the postgres pod.
+- **Stage 3 (built)**: `resource_permissions` table in DB; `ResolveResourcePermissions()` in engine; `ResourcePermissions []ResourcePermission` on session; `MatchRoute()` replaces `RoutePermission()` (captures first `*` as ResourceID); `ResourcePermHandler` at `/bff/admin/resource-permissions`; `GET /bff/admin/rbac-config` for dropdown data.
+- **Resource permissions are session-bound**: `ResolveResourcePermissions` runs at login (Callback handler). Grant/revoke changes take effect only after the affected user re-logs in.
 
 ## Allowlist design
 
@@ -107,18 +153,24 @@ Same Flux + Helm pattern as fusion-forge:
 | `OIDC_BYPASS_SUB` | `dev-user` | Subject (`sub`) claim pre-filled in the mock login form |
 | `OIDC_BYPASS_EMAIL` | `dev@local` | Email claim pre-filled in the mock login form |
 | `OIDC_BYPASS_NAME` | `Dev User` | Display name claim pre-filled in the mock login form |
+| `OIDC_BYPASS_GROUPS` | `""` | Comma-separated group names pre-selected in the mock login form's group selector |
+| `RBAC_CONFIG_PATH` | `./rbac.yaml` | Path to the RBAC config file; mount via ConfigMap in K8s |
+| `DB_DSN` | — | PostgreSQL DSN; required when `rbac.yaml` `group_source` is `db` or `both` |
 
 ## Local dev (minikube)
-- Minikube deployment uses tag `fusion-bff:local` — build with `docker build -t fusion-bff:local .` (not `latest`)
+- Always use semver image tags (`fusion-bff:X.Y.Z`) — never `latest` or `local`; bump on each deploy
+- Build inside minikube daemon: `eval $(minikube docker-env) && docker build -t fusion-bff:X.Y.Z .`
 - Dev Vite server: `POST_LOGIN_REDIRECT_URL=http://dev.fusion.local:5174`, `CORS_ORIGINS=http://dev.fusion.local:5174`
 - In-cluster spectra (bypass mode): `POST_LOGIN_REDIRECT_URL=http://spectra.fusion.local/`, `CORS_ORIGINS=http://spectra.fusion.local`, `SESSION_COOKIE_DOMAIN=auto` — see DEV.md for complete Helm commands
+- Set `OIDC_BYPASS_GROUPS=platform-admin` (or comma-separated list) to pre-select groups on the mock login form
 - Upstream proxy (`internal/proxy/upstream.go`) strips CORS headers in `ModifyResponse` — prevents duplicate `Access-Control-Allow-Origin` when upstream also sets it
+- **Helm chart pre-flight for RBAC**: chart needs `OIDC_BYPASS_GROUPS` + `RBAC_CONFIG_PATH` in `configmap.yaml`, and a ConfigMap volume mounting `rbac.yaml` into the pod — see `TEST_PLAN_session1.md` section 0 for exact snippets
 
 ## Minikube testing gotchas
 
 - **OIDC issuer mismatch**: BFF rejects tokens fetched via `localhost` port-forward — the `iss` claim won't match `OIDC_ISSUER_URL`. Fetch tokens from inside the cluster: `kubectl run token-fetch --rm -i --restart=Never --image=alpine/curl:latest --namespace fusion -- sh -c 'curl -s -X POST http://keycloak.default.svc.cluster.local:8080/realms/fusion/protocol/openid-connect/token -d "grant_type=password&client_id=fusion-gui&client_secret=<secret>&username=testuser&password=password"' 2>/dev/null | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4`
 - **Keycloak `fusion-gui` is a confidential client** — always pass `client_secret` when fetching tokens; omitting it returns `unauthorized_client`
-- **Helm field manager conflicts**: Resources originally created with `kubectl apply` or `kubectl patch` block `helm upgrade`. Fix: `kubectl patch configmap <name> -n <ns> --type merge -p '{"data":{...}}'` for ConfigMap keys; `kubectl set env deployment/<name>` for Deployment env vars; always follow with `kubectl rollout restart deployment/<name> -n <ns>`
+- **Helm field manager conflicts**: Resources with `kubectl-patch` ownership block `helm upgrade` with "conflict with kubectl". Fix: `helm get values <release> -n <ns> -o yaml > /tmp/vals.yaml && helm template <release> <chart> -f /tmp/vals.yaml -n <ns> | kubectl apply --server-side --force-conflicts -n <ns> -f -`, then re-run `helm upgrade`. Steal ownership once; subsequent upgrades work normally.
 - **ConfigMap env vars**: Updating a ConfigMap doesn't restart pods — run `kubectl rollout restart deployment/<name> -n <namespace>` to pick up changes
 
 ## Commands
@@ -147,30 +199,47 @@ kubectl port-forward -n fusion service/fusion-bff 18081:8080 --address 127.0.0.1
 
 ```
 cmd/
-  server/main.go           # Entry point — config + gin
+  server/main.go           # Entry point — loads rbac.yaml, builds Engine, wires everything
 internal/
-  config/config.go         # Env var loading (bypass fields: OIDCBypass, OIDCBypassBaseURL, etc.)
+  config/config.go         # Env var loading — includes OIDCBypassGroups, RBACConfigPath
   allowlist/allowlist.go   # Checker interface + static impl + WithTTLCache wrapper
+  rbac/
+    config.go              # RBACConfig, RouteRule (+ ResourceType), PermissionImplies, LoadConfig, GroupNames()
+    engine.go              # Engine.Resolve() + ResolveResourcePermissions() + RBACConfigSummary()
+    route.go               # MatchRoute() + matchAndCapture() — first-match glob with ResourceID capture; RoutePermission() is a thin wrapper
+    route_capture_test.go  # unit tests for MatchRoute capture semantics
+    store.go               # GroupRoleStore interface
+    static_store.go        # StaticGroupRoleStore — yaml group_roles map
+    db_store.go            # DBGroupRoleStore — postgres-backed
+    merged_store.go        # MergedGroupRoleStore — union of static + db
+  db/
+    db.go                  # Open(), Migrate() — idempotent CREATE TABLE IF NOT EXISTS; includes resource_permissions table
+    queries.go             # ListGroupRoles, CreateGroupRole, DeleteGroupRole, LoadAllGroupRoles; + ListResourcePerms, CreateResourcePerm, DeleteResourcePerm, LoadResourcePermsForUser
   oidc/
-    claims.go              # UserClaims struct
-    validator.go           # JWT validation against JWKS endpoint (production)
+    claims.go              # UserClaims { Subject, Email, Name, Groups }
+    validator.go           # JWT validation; extracts + normalises "groups" claim
     jwks.go                # JWKS fetching and caching (cachingKeySet with TTL)
   mockoidc/                # Embedded mock OIDC — active only when OIDC_BYPASS=true
-    server.go              # RSA key gen, login form, auth code store, mock route handlers
-    validator.go           # mockValidator — verifies JWTs using in-memory key (no HTTP)
+    server.go              # RSA key gen; login form with group multi-select; groups in JWT
+    validator.go           # mockValidator — verifies JWTs; extracts Groups claim
   token/provider.go        # SA token Provider interface + FileProvider (TTL cache)
   proxy/
     upstream.go            # UpstreamProxy (single type used for forge, index, and weave)
   session/
-    session.go             # Session struct, Store interface, InMemoryStore, CookieDomain helper, Reap
+    session.go             # Session { …, Roles []string, Permissions []string, ResourcePermissions []ResourcePermission }
   api/
     handler/health.go      # /health /livez /readyz
-    handler/auth.go        # /bff/login, /bff/callback, /bff/logout, /bff/userinfo
+    handler/auth.go        # /bff/login, /bff/callback (resolves RBAC + resource perms), /bff/logout, /bff/userinfo
+    handler/admin.go       # /bff/admin/group-roles (GET/POST/DELETE); GET /bff/admin/rbac-config
+    handler/resource_permissions.go  # GET/POST/DELETE /bff/admin/resource-permissions (Stage 3)
     middleware/auth.go     # OIDC Bearer middleware — validate + allowlist + set user context
-    middleware/apiauth.go  # /api/* combined middleware: session cookie (with silent refresh) + Bearer fallback
+    middleware/apiauth.go  # /api/* combined middleware: session cookie + Bearer fallback + RBAC enforcement
+    middleware/session_auth.go  # SessionAuth — cookie-only auth + permission check for /bff/admin/*
     middleware/cors.go     # CORS middleware
     middleware/requestid.go
     router.go              # Gin routes
+rbac.yaml                  # Root config — keep in sync with deployment/rbac.yaml (Helm chart reads the latter)
+deployment/rbac.yaml       # Helm chart copy — updated by `cp rbac.yaml deployment/rbac.yaml` before deploying
 test/e2e/                  # e2e tests (build tag: e2e); uses httptest mock OIDC + upstreams
 deployment/                # Helm chart
 flux/                      # Flux GitOps (3 environments)

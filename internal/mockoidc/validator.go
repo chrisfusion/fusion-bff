@@ -44,10 +44,11 @@ func (v *mockValidator) Validate(_ context.Context, rawToken string) (*oidcpkg.U
 	}
 
 	var claims struct {
-		Sub   string `json:"sub"`
-		Email string `json:"email"`
-		Name  string `json:"name"`
-		Exp   int64  `json:"exp"`
+		Sub    string   `json:"sub"`
+		Email  string   `json:"email"`
+		Name   string   `json:"name"`
+		Groups []string `json:"groups"`
+		Exp    int64    `json:"exp"`
 	}
 	if err := json.Unmarshal(payload, &claims); err != nil {
 		return nil, fmt.Errorf("unmarshal claims: %w", err)
@@ -61,5 +62,6 @@ func (v *mockValidator) Validate(_ context.Context, rawToken string) (*oidcpkg.U
 		Subject: claims.Sub,
 		Email:   claims.Email,
 		Name:    claims.Name,
+		Groups:  claims.Groups,
 	}, nil
 }

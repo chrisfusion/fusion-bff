@@ -72,18 +72,18 @@ eval $(minikube docker-env)
 
 # Build fusion-bff
 cd /path/to/fusion-bff
-docker build -t fusion-bff:local .
+docker build -t fusion-bff:0.1.0 .
 
 # Build fusion-spectra
 cd /path/to/fusion-spectra
-docker build -t fusion-spectra:latest .
+docker build -t fusion-spectra:0.1.0 .
 ```
 
 After a code change, rebuild the image and restart the deployment:
 
 ```bash
 eval $(minikube docker-env)
-docker build -t fusion-bff:local .            # or fusion-spectra:latest
+docker build -t fusion-bff:0.1.0 .            # bump semver on each deploy
 kubectl rollout restart deployment/fusion-bff -n fusion
 ```
 

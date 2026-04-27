@@ -104,3 +104,7 @@ config:
   oidcBypassSub: "dev-user"
   oidcBypassEmail: "dev@local"
   oidcBypassName: "Dev User"
+  oidcBypassGroups: ""        # comma-separated default groups pre-selected in mock login form
+  rbacConfigPath: "/etc/fusion-bff/rbac.yaml"
+  # Database — required when rbac.yaml group_source is "db" or "both"
+  dbDsn: ""                  # full PostgreSQL DSN; set via --set or override in values-dev.yaml

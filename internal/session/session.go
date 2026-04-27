@@ -12,17 +12,27 @@ import (
 // ErrNotFound is returned by Get when no session exists for the given ID.
 var ErrNotFound = errors.New("session: not found")
 
+// ResourcePermission is a permission grant scoped to a specific resource.
+type ResourcePermission struct {
+	Permission   string `json:"permission"`
+	ResourceType string `json:"resource_type"`
+	ResourceID   string `json:"resource_id"`
+}
+
 // Session holds the OAuth2 token set and resolved identity for one authenticated browser user.
 type Session struct {
-	ID           string
-	Sub          string
-	Email        string
-	Name         string
-	AccessToken  string
-	RefreshToken string
-	IDToken      string
-	ExpiresAt    time.Time // access token expiry
-	CreatedAt    time.Time
+	ID                  string
+	Sub                 string
+	Email               string
+	Name                string
+	Roles               []string
+	Permissions         []string
+	ResourcePermissions []ResourcePermission
+	AccessToken         string
+	RefreshToken        string
+	IDToken             string
+	ExpiresAt           time.Time // access token expiry
+	CreatedAt           time.Time
 }
 
 // Store manages server-side sessions and short-lived PKCE pending states.

@@ -28,22 +28,25 @@ import (
 // It generates an RSA keypair at startup, serves a browser login form, issues
 // signed JWTs, and exposes a JWKS endpoint — all on the same Gin engine as the BFF.
 type Server struct {
-	privateKey   *rsa.PrivateKey
-	keyID        string
-	issuer       string // cluster-internal base URL (used as iss claim in JWTs)
-	clientID     string
-	defaultSub   string
-	defaultEmail string
-	defaultName  string
-	jwks         []byte // pre-serialised JWKS JSON
+	privateKey      *rsa.PrivateKey
+	keyID           string
+	issuer          string   // cluster-internal base URL (used as iss claim in JWTs)
+	clientID        string
+	defaultSub      string
+	defaultEmail    string
+	defaultName     string
+	defaultGroups   []string // pre-selected groups from OIDC_BYPASS_GROUPS
+	availableGroups []string // all group names from rbac.yaml for the form selector
+	jwks            []byte   // pre-serialised JWKS JSON
 
-	mu       sync.Mutex
-	codes    map[string]*codeEntry  // auth code → identity (5-min TTL)
-	refreshes map[string]*identity // refresh token → identity (no expiry; dev-only)
+	mu        sync.Mutex
+	codes     map[string]*codeEntry  // auth code → identity (5-min TTL)
+	refreshes map[string]*identity   // refresh token → identity (no expiry; dev-only)
 }
 
 type identity struct {
 	sub, email, name string
+	groups           []string
 }
 
 type codeEntry struct {
@@ -53,21 +56,24 @@ type codeEntry struct {
 
 // New builds a Server from the bypass configuration. It generates a fresh RSA
 // keypair each time the BFF starts, so tokens issued in one run are invalid after restart.
-func New(cfg *config.Config) *Server {
+// availableGroups is the list of group names from rbac.yaml for the login form selector.
+func New(cfg *config.Config, availableGroups []string) *Server {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		log.Fatalf("mockoidc: generate RSA key: %v", err)
 	}
 	s := &Server{
-		privateKey:   key,
-		keyID:        "mock-1",
-		issuer:       "http://localhost:" + cfg.HTTPPort + "/mock-oidc",
-		clientID:     cfg.OIDCClientID,
-		defaultSub:   cfg.OIDCBypassSub,
-		defaultEmail: cfg.OIDCBypassEmail,
-		defaultName:  cfg.OIDCBypassName,
-		codes:        make(map[string]*codeEntry),
-		refreshes:    make(map[string]*identity),
+		privateKey:      key,
+		keyID:           "mock-1",
+		issuer:          "http://localhost:" + cfg.HTTPPort + "/mock-oidc",
+		clientID:        cfg.OIDCClientID,
+		defaultSub:      cfg.OIDCBypassSub,
+		defaultEmail:    cfg.OIDCBypassEmail,
+		defaultName:     cfg.OIDCBypassName,
+		defaultGroups:   cfg.OIDCBypassGroups,
+		availableGroups: availableGroups,
+		codes:           make(map[string]*codeEntry),
+		refreshes:       make(map[string]*identity),
 	}
 	s.jwks = s.buildJWKS()
 	return s
@@ -115,8 +121,10 @@ body{font-family:sans-serif;max-width:440px;margin:60px auto;padding:0 16px}
 .warn{background:#fff3cd;border:1px solid #ffc107;padding:10px 14px;border-radius:4px;margin-bottom:24px;font-size:14px}
 h2{margin-bottom:6px}
 label{display:block;margin-bottom:14px;font-size:14px;color:#333}
-input{display:block;width:100%;box-sizing:border-box;padding:7px 9px;margin-top:4px;border:1px solid #bbb;border-radius:3px;font-size:14px}
+input,select{display:block;width:100%;box-sizing:border-box;padding:7px 9px;margin-top:4px;border:1px solid #bbb;border-radius:3px;font-size:14px}
+select[multiple]{height:auto;min-height:80px}
 button{padding:9px 28px;background:#1a73e8;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:15px}
+small{color:#666;font-size:12px;display:block;margin-top:2px}
 </style>
 </head>
 <body>
@@ -134,20 +142,43 @@ button{padding:9px 28px;background:#1a73e8;color:#fff;border:none;border-radius:
 <label>Display name
   <input name="name" value="{{.Name}}">
 </label>
+{{if .Groups}}
+<label>Groups
+  <small>Hold Ctrl/Cmd to select multiple</small>
+  <select name="groups" multiple>
+  {{range .Groups}}<option value="{{.Name}}"{{if .Selected}} selected{{end}}>{{.Name}}</option>
+  {{end}}
+  </select>
+</label>
+{{end}}
 <button type="submit">Login</button>
 </form>
 </body>
 </html>`))
 
+type groupOption struct {
+	Name     string
+	Selected bool
+}
+
 // handleAuthForm renders the login form. The browser is redirected here by AuthHandler.Login.
 func (s *Server) handleAuthForm(c *gin.Context) {
+	defaultSet := make(map[string]bool, len(s.defaultGroups))
+	for _, g := range s.defaultGroups {
+		defaultSet[g] = true
+	}
+	groups := make([]groupOption, 0, len(s.availableGroups))
+	for _, g := range s.availableGroups {
+		groups = append(groups, groupOption{Name: g, Selected: defaultSet[g]})
+	}
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	_ = loginTmpl.Execute(c.Writer, map[string]string{
+	_ = loginTmpl.Execute(c.Writer, map[string]interface{}{
 		"State":       c.Query("state"),
 		"RedirectURI": c.Query("redirect_uri"),
 		"Sub":         s.defaultSub,
 		"Email":       s.defaultEmail,
 		"Name":        s.defaultName,
+		"Groups":      groups,
 	})
 }
 
@@ -161,10 +192,13 @@ func (s *Server) handleAuthSubmit(c *gin.Context) {
 		redirectURI = "http://" + c.Request.Host + "/bff/callback"
 	}
 
+	selectedGroups := c.PostFormArray("groups")
+
 	ident := identity{
-		sub:   strings.TrimSpace(c.PostForm("sub")),
-		email: strings.TrimSpace(c.PostForm("email")),
-		name:  strings.TrimSpace(c.PostForm("name")),
+		sub:    strings.TrimSpace(c.PostForm("sub")),
+		email:  strings.TrimSpace(c.PostForm("email")),
+		name:   strings.TrimSpace(c.PostForm("name")),
+		groups: selectedGroups,
 	}
 	if ident.sub == "" {
 		ident.sub = s.defaultSub
@@ -209,7 +243,7 @@ func (s *Server) handleToken(c *gin.Context) {
 		if id != nil {
 			ident = *id
 		} else {
-			ident = identity{sub: s.defaultSub, email: s.defaultEmail, name: s.defaultName}
+			ident = identity{sub: s.defaultSub, email: s.defaultEmail, name: s.defaultName, groups: s.defaultGroups}
 		}
 
 	default:
@@ -271,14 +305,19 @@ func (s *Server) mintJWT(id identity, now time.Time) (string, error) {
 		"kid": s.keyID,
 		"typ": "JWT",
 	})
+	groups := id.groups
+	if groups == nil {
+		groups = []string{}
+	}
 	payloadJSON, err := json.Marshal(map[string]interface{}{
-		"iss":   s.issuer,
-		"aud":   []string{s.clientID},
-		"sub":   id.sub,
-		"email": id.email,
-		"name":  id.name,
-		"iat":   now.Unix(),
-		"exp":   now.Add(24 * time.Hour).Unix(),
+		"iss":    s.issuer,
+		"aud":    []string{s.clientID},
+		"sub":    id.sub,
+		"email":  id.email,
+		"name":   id.name,
+		"groups": groups,
+		"iat":    now.Unix(),
+		"exp":    now.Add(24 * time.Hour).Unix(),
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal claims: %w", err)

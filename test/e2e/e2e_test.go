@@ -21,6 +21,7 @@ import (
 	"github.com/fusion-platform/fusion-bff/internal/config"
 	"github.com/fusion-platform/fusion-bff/internal/oidc"
 	"github.com/fusion-platform/fusion-bff/internal/proxy"
+	"github.com/fusion-platform/fusion-bff/internal/rbac"
 	"github.com/fusion-platform/fusion-bff/internal/session"
 	"github.com/fusion-platform/fusion-bff/internal/token"
 )
@@ -130,7 +131,9 @@ func TestMain(m *testing.M) {
 		return src.Token()
 	}
 
-	authH := handler.NewAuthHandler(cfg, store, validator, checker)
+	rbacCfg := &rbac.RBACConfig{GroupSource: "jwt"}
+	rbacEngine := rbac.NewEngine(rbacCfg, nil)
+	authH := handler.NewAuthHandler(cfg, store, validator, checker, rbacEngine)
 
 	saToken := token.NewFileProvider(cfg.SATokenPath, cfg.SATokenCacheTTL)
 	weaveSAToken := token.NewFileProvider(cfg.WeaveSATokenPath, cfg.SATokenCacheTTL)
@@ -139,7 +142,7 @@ func TestMain(m *testing.M) {
 	indexProxy, _ := proxy.NewUpstreamProxy(cfg.IndexURL, "/api/index", saToken)
 	weaveProxy, _ := proxy.NewUpstreamProxy(cfg.WeaveURL, "/api/weave", weaveSAToken)
 
-	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, forgeProxy, indexProxy, weaveProxy)
+	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, nil, nil)
 	bffServer = httptest.NewServer(router)
 	defer bffServer.Close()
 
