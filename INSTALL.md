@@ -8,7 +8,7 @@ This document covers three deployment paths: local development, Docker, and Kube
 
 | Tool | Minimum version | Purpose |
 |---|---|---|
-| Go | 1.22 | Build and test |
+| Go | 1.25 | Build and test |
 | Docker | 20+ | Image build |
 | kubectl | 1.26+ | Kubernetes deployment |
 | Helm | 3.12+ | Chart rendering / install |
@@ -199,18 +199,6 @@ eval $(minikube docker-env)
 make docker-build IMG=fusion-bff:local
 ```
 
-### Configure secrets
-
-The chart expects an existing `fusion-bff-secret` Secret in the target namespace with the following keys:
-
-```bash
-kubectl create secret generic fusion-bff-secret \
-  --namespace fusion \
-  --from-literal=OIDC_ISSUER_URL=http://keycloak.default.svc.cluster.local:8080/realms/fusion \
-  --from-literal=OIDC_CLIENT_ID=fusion-gui \
-  --from-literal=ALLOWED_USERS=alice@example.com,bob@example.com
-```
-
 ### Install with Helm (normal mode)
 
 ```bash
@@ -247,6 +235,46 @@ helm install fusion-bff ./deployment \
   --set config.indexUrl=http://fusion-index-backend.fusion.svc.cluster.local:8080 \
   --set config.weaveUrl=http://fusion-weave-api.fusion.svc.cluster.local:8082
 ```
+
+### Database (PostgreSQL)
+
+Required only when `rbac.yaml` sets `group_source: db` or `both`. Three modes — pick one:
+
+**Mode 1 — disabled** (default; `group_source: jwt`)
+
+No extra flags needed. `DB_DSN` is not injected.
+
+**Mode 2 — chart-generated Secret**
+
+The chart creates a `<release>-db` Secret from the DSN you supply. Pass the value via `--set` or a values override file that is never committed to git.
+
+```bash
+helm upgrade --install fusion-bff ./deployment \
+  --namespace fusion \
+  --set db.create=true \
+  --set db.dsn="postgres://fusion:devpass@postgres.fusion.svc.cluster.local:5432/fusion_bff?sslmode=disable" \
+  ...
+```
+
+**Mode 3 — existing Secret (ESO / kubectl)**
+
+Create the Secret out-of-band (or let ESO materialise it), then point the chart at it:
+
+```bash
+# One-time creation (or managed by ESO ExternalSecret)
+kubectl create secret generic fusion-bff-db \
+  --namespace fusion \
+  --from-literal=DB_DSN="postgres://fusion:pass@postgres:5432/fusion_bff?sslmode=disable"
+
+helm upgrade --install fusion-bff ./deployment \
+  --namespace fusion \
+  --set db.existingSecret=fusion-bff-db \
+  ...
+```
+
+The key inside the Secret defaults to `DB_DSN`; override with `db.existingSecretKey` if your Secret uses a different key name.
+
+---
 
 To switch an existing bypass deployment back to real OIDC:
 

@@ -45,6 +45,3 @@ data:
   OIDC_PUBLIC_AUTH_URL: {{ .Values.config.oidcPublicAuthUrl | quote }}
   {{- end }}
   {{- end }}
-  {{- if .Values.config.dbDsn }}
-  DB_DSN: {{ .Values.config.dbDsn | quote }}
-  {{- end }}

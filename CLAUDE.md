@@ -96,6 +96,10 @@ Path patterns: `*` in the middle matches one segment; trailing `*` matches one o
 
 **`deployment/rbac.yaml` sync**: Helm chart reads from `deployment/rbac.yaml` via `.Files.Get`, NOT from the repo root. Always update BOTH when changing `rbac.yaml`. Deploying with only the root updated silently reverts the configmap to the stale chart copy.
 
+**Helm secrets — two blocks**: `secret.*` (OIDC client secret + session secret) and `db.*` (PostgreSQL DSN). `config.dbDsn` was removed — it landed in the ConfigMap (plaintext). Never use it. DB modes: `db.create=true` + `db.dsn` (chart generates `<release>-db` Secret) or `db.existingSecret=<name>` (ESO/kubectl-managed). Leave both unset when `group_source: jwt`.
+
+**ESO**: External Secrets Operator is deployed in the cluster — prefer `db.existingSecret` for production DB credentials.
+
 ### Extension points
 - **Stage 2 (built)**: `GroupRoleStore` interface in `internal/rbac/store.go` replaces the yaml `group_roles` map at runtime. `StaticGroupRoleStore` (yaml), `DBGroupRoleStore` (postgres), `MergedGroupRoleStore` (union). Switch `group_source: db` or `both` in `rbac.yaml`. Requires `DB_DSN`. Admin API at `GET/POST/DELETE /bff/admin/group-roles` (requires `admin:roles:manage`).
 - **`group_source: db` bootstrap gotcha**: DB is empty on first deploy — nobody has admin role to seed it. Use `group_source: both` (yaml as baseline + DB extras) or manually `INSERT INTO group_role_assignments` via `kubectl exec` on the postgres pod.

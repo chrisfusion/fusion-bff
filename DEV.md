@@ -135,6 +135,35 @@ The only BFF-relevant value in spectra is `config.bffUrl`. It must match the BFF
 
 ---
 
+## Database in development (group_source: db or both)
+
+When testing the DB-backed RBAC store in minikube, pass the DSN via `db.create=true` so the chart generates the Secret — no ESO required in dev:
+
+```bash
+helm upgrade --install fusion-bff ./deployment \
+  --namespace fusion \
+  --set db.create=true \
+  --set db.dsn="postgres://fusion:devpass@fusion-index-postgresql.fusion.svc.cluster.local:5432/fusion_bff?sslmode=disable" \
+  ... # (rest of your usual flags)
+```
+
+The DSN above reuses the fusion-index postgres pod; the `fusion_bff` database must be created once:
+
+```bash
+kubectl exec -n fusion fusion-index-postgresql-0 -- \
+  bash -c "PGPASSWORD='<pg-admin-pass>' psql -U postgres -c 'CREATE DATABASE fusion_bff OWNER fusion;'"
+```
+
+The BFF runs `db.Migrate()` on startup — no manual schema setup needed. Seed initial group→role assignments via `POST /bff/admin/group-roles` (requires `admin:roles:manage`) or directly:
+
+```bash
+kubectl exec -n fusion fusion-index-postgresql-0 -- \
+  bash -c "PGPASSWORD='<pg-admin-pass>' psql -U fusion fusion_bff -c \
+  \"INSERT INTO group_role_assignments (group_name, role_name) VALUES ('platform-admin','admin');\""
+```
+
+---
+
 ## Helm field manager conflicts (workaround)
 
 If either chart was previously patched with `kubectl patch` or `kubectl apply`, Helm's server-side apply may fail with:

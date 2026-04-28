@@ -27,6 +27,14 @@
 {{- printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) }}
 {{- end }}
 
+{{- define "fusion-bff.dbSecretName" -}}
+{{- if .Values.db.create -}}
+{{ include "fusion-bff.fullname" . }}-db
+{{- else -}}
+{{ .Values.db.existingSecret }}
+{{- end -}}
+{{- end }}
+
 {{- define "fusion-bff.labels" -}}
 helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 app.kubernetes.io/name: {{ include "fusion-bff.name" . }}

@@ -245,4 +245,5 @@ Resource-scoped grants are small enough to embed in the `userinfo` response at l
 | Privilege escalation via route | `rbac.RoutePermission` enforced on every `/api/*` request; 403 if permission missing |
 | RBAC bypass via session | Roles/permissions stored in server-side session — client cannot modify them |
 | OIDC bypass misuse | `OIDC_BYPASS=true` prints a loud `[WARNING]` at startup; guard with Helm `required` in prod |
+| DB credentials in config | `DB_DSN` injected from a K8s Secret (chart-generated or ESO-managed); never stored in ConfigMap or `values.yaml` |
 | Container breakout | Distroless image, `readOnlyRootFilesystem: true`, runs as non-root |

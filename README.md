@@ -46,7 +46,7 @@ Pod-to-pod traffic (e.g. CI pipelines calling forge directly) bypasses the BFF e
 ## Quick start
 
 ```bash
-# Prerequisites: Go 1.22+, a running OIDC provider, and the upstream services
+# Prerequisites: Go 1.25+, a running OIDC provider, and the upstream services
 
 cp .env.example .env          # fill in OIDC_ISSUER_URL, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, …
 make run                      # starts on :8080
@@ -130,7 +130,7 @@ All configuration is via environment variables.
 | Variable | Default | Description |
 |---|---|---|
 | `RBAC_CONFIG_PATH` | `./rbac.yaml` | Path to the RBAC config file (ConfigMap-mounted in K8s) |
-| `DB_DSN` | — | PostgreSQL DSN — required when `rbac.yaml` `group_source` is `db` or `both` |
+| `DB_DSN` | — | PostgreSQL DSN — required when `rbac.yaml` `group_source` is `db` or `both`; in Helm, set via `db.create`/`db.dsn` or `db.existingSecret` (never `config.dbDsn`) |
 
 ### Development bypass (mock OIDC) — never use in production
 

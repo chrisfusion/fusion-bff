@@ -76,6 +76,13 @@ spec:
                   name: {{ include "fusion-bff.fullname" . }}
                   key: SESSION_SECRET
             {{- end }}
+            {{- if or .Values.db.create .Values.db.existingSecret }}
+            - name: DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fusion-bff.dbSecretName" . }}
+                  key: {{ .Values.db.existingSecretKey }}
+            {{- end }}
           volumeMounts:
             - name: sa-token
               mountPath: /var/run/secrets/fusion-bff

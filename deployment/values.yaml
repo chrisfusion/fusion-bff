@@ -106,5 +106,13 @@ config:
   oidcBypassName: "Dev User"
   oidcBypassGroups: ""        # comma-separated default groups pre-selected in mock login form
   rbacConfigPath: "/etc/fusion-bff/rbac.yaml"
-  # Database — required when rbac.yaml group_source is "db" or "both"
-  dbDsn: ""                  # full PostgreSQL DSN; set via --set or override in values-dev.yaml
+
+db:
+  # create: true  → chart generates a Secret named <release>-db containing DB_DSN from db.dsn
+  # create: false → reference an existing Secret (e.g. ESO-managed or kubectl-created);
+  #                 set existingSecret to the Secret name, or leave both create and existingSecret
+  #                 empty/blank to disable DB entirely (group_source: jwt)
+  create: false
+  dsn: ""                  # PostgreSQL DSN; required when create: true
+  existingSecret: ""       # name of the pre-existing Secret; required when create: false and DB is used
+  existingSecretKey: "DB_DSN"  # key inside the Secret that holds the DSN
