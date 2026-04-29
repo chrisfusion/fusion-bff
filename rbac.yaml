@@ -25,6 +25,10 @@ role_permissions:
     - weave:jobtemplates:delete
     - weave:servicetemplates:write
     - weave:servicetemplates:delete
+    - weave:chains:write
+    - weave:chains:delete
+    - weave:triggers:write
+    - weave:triggers:delete
     - admin:users:view
     - admin:roles:manage
   engineer:
@@ -37,6 +41,8 @@ role_permissions:
     - weave:resources:read
     - weave:jobtemplates:write
     - weave:servicetemplates:write
+    - weave:chains:write
+    - weave:triggers:write
     - admin:users:view
   viewer:
     - index:artifacts:read
@@ -70,4 +76,12 @@ route_permissions:
   - { method: PUT,    path: /api/weave/api/v1/servicetemplates/*,     permission: weave:servicetemplates:write }
   - { method: PATCH,  path: /api/weave/api/v1/servicetemplates/*,     permission: weave:servicetemplates:write }
   - { method: POST,   path: /api/weave/api/v1/servicetemplates,       permission: weave:servicetemplates:write }
+  - { method: DELETE, path: /api/weave/api/v1/chains/*,               permission: weave:chains:delete }
+  - { method: PUT,    path: /api/weave/api/v1/chains/*,               permission: weave:chains:write }
+  - { method: PATCH,  path: /api/weave/api/v1/chains/*,               permission: weave:chains:write }
+  - { method: POST,   path: /api/weave/api/v1/chains,                 permission: weave:chains:write }
+  - { method: DELETE, path: /api/weave/api/v1/triggers/*,             permission: weave:triggers:delete }
+  - { method: PUT,    path: /api/weave/api/v1/triggers/*,             permission: weave:triggers:write }
+  - { method: PATCH,  path: /api/weave/api/v1/triggers/*,             permission: weave:triggers:write }
+  - { method: POST,   path: /api/weave/api/v1/triggers,               permission: weave:triggers:write }
   - { method: GET,    path: /api/weave/*,                             permission: weave:resources:read }
