@@ -67,6 +67,8 @@ route_permissions:
   - { method: GET,    path: /api/index/*,                             permission: index:artifacts:read }
   - { method: POST,   path: /api/forge/api/v1/venvs/validate,         permission: forge:builds:create }
   - { method: POST,   path: /api/forge/api/v1/venvs,                  permission: forge:builds:create }
+  - { method: POST,   path: /api/forge/api/v1/gitbuilds/validate,     permission: forge:builds:create }
+  - { method: POST,   path: /api/forge/api/v1/gitbuilds,              permission: forge:builds:create }
   - { method: GET,    path: /api/forge/*,                             permission: forge:builds:read }
   - { method: DELETE, path: /api/weave/api/v1/jobtemplates/*,         permission: weave:jobtemplates:delete }
   - { method: PUT,    path: /api/weave/api/v1/jobtemplates/*,         permission: weave:jobtemplates:write }
