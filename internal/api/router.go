@@ -29,6 +29,7 @@ func NewRouter(
 	weave *proxy.UpstreamProxy,
 	adminH *handler.AdminHandler,
 	resourcePermH *handler.ResourcePermHandler,
+	systemHealthH *handler.SystemHealthHandler,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -58,6 +59,16 @@ func NewRouter(
 			adminGroup.POST("/resource-permissions", resourcePermH.Create)
 			adminGroup.DELETE("/resource-permissions/:id", resourcePermH.Delete)
 		}
+	}
+
+	if systemHealthH != nil {
+		bff.GET("/system-health", middleware.SessionAuth(store, cfg.SessionCookieName, ""), systemHealthH.Status)
+
+		healthAdminGroup := bff.Group("/admin")
+		healthAdminGroup.Use(middleware.SessionAuth(store, cfg.SessionCookieName, "admin:health:manage"))
+		healthAdminGroup.GET("/service-status", systemHealthH.ListOverrides)
+		healthAdminGroup.PUT("/service-status/:service", systemHealthH.UpsertOverride)
+		healthAdminGroup.DELETE("/service-status/:service", systemHealthH.DeleteOverride)
 	}
 
 	api := r.Group("/api")

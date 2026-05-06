@@ -31,6 +31,7 @@ role_permissions:
     - weave:triggers:delete
     - admin:users:view
     - admin:roles:manage
+    - admin:health:manage
   engineer:
     - index:artifacts:read
     - index:artifacts:write

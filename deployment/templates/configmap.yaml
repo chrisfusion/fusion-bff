@@ -14,6 +14,16 @@ data:
   FORGE_URL: {{ .Values.config.forgeUrl | quote }}
   INDEX_URL: {{ .Values.config.indexUrl | quote }}
   WEAVE_URL: {{ .Values.config.weaveUrl | quote }}
+  {{- if .Values.config.forgeHealthUrl }}
+  FORGE_HEALTH_URL: {{ .Values.config.forgeHealthUrl | quote }}
+  {{- end }}
+  {{- if .Values.config.indexHealthUrl }}
+  INDEX_HEALTH_URL: {{ .Values.config.indexHealthUrl | quote }}
+  {{- end }}
+  {{- if .Values.config.weaveHealthUrl }}
+  WEAVE_HEALTH_URL: {{ .Values.config.weaveHealthUrl | quote }}
+  {{- end }}
+  HEALTH_PROBE_TIMEOUT: {{ .Values.config.healthProbeTimeout | quote }}
   SESSION_COOKIE_NAME: {{ .Values.config.sessionCookieName | quote }}
   SESSION_COOKIE_DOMAIN: {{ .Values.config.sessionCookieDomain | quote }}
   SESSION_COOKIE_SECURE: {{ .Values.config.sessionCookieSecure | quote }}

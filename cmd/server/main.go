@@ -12,6 +12,8 @@ import (
 
 	"golang.org/x/oauth2"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/fusion-platform/fusion-bff/internal/allowlist"
 	"github.com/fusion-platform/fusion-bff/internal/api"
 	"github.com/fusion-platform/fusion-bff/internal/api/handler"
@@ -39,16 +41,11 @@ func main() {
 		log.Fatalf("rbac config: %v", err)
 	}
 
-	// Open DB pool and run migration when group_source requires it.
-	var adminH *handler.AdminHandler
-	var resourcePermH *handler.ResourcePermHandler
-	var rbacEngine *rbac.Engine
-
-	if rbacCfg.GroupSource == "db" || rbacCfg.GroupSource == "both" {
-		if cfg.DBDSN == "" {
-			log.Fatalf("DB_DSN is required when rbac group_source is %q", rbacCfg.GroupSource)
-		}
-		pool, err := db.Open(ctx, cfg.DBDSN)
+	// Open DB pool whenever DB_DSN is set (used by RBAC store and system health overrides).
+	var pool *pgxpool.Pool
+	if cfg.DBDSN != "" {
+		var err error
+		pool, err = db.Open(ctx, cfg.DBDSN)
 		if err != nil {
 			log.Fatalf("db: %v", err)
 		}
@@ -56,13 +53,33 @@ func main() {
 		if err := db.Migrate(ctx, pool); err != nil {
 			log.Fatalf("db: migrate: %v", err)
 		}
+	}
+
+	var adminH *handler.AdminHandler
+	var resourcePermH *handler.ResourcePermHandler
+	var rbacEngine *rbac.Engine
+
+	if rbacCfg.GroupSource == "db" || rbacCfg.GroupSource == "both" {
+		if pool == nil {
+			log.Fatalf("DB_DSN is required when rbac group_source is %q", rbacCfg.GroupSource)
+		}
 		rbacEngine = rbac.NewEngine(rbacCfg, pool)
 		adminH = handler.NewAdminHandler(pool, rbacEngine)
 		resourcePermH = handler.NewResourcePermHandler(pool)
 	} else {
 		rbacEngine = rbac.NewEngine(rbacCfg, nil)
-		// adminH and resourcePermH stay nil — NewRouter skips the /bff/admin group
+		// adminH and resourcePermH stay nil — NewRouter skips the /bff/admin RBAC group
 	}
+
+	// SystemHealthHandler is always constructed — live probing works without DB;
+	// overrides are skipped when pool is nil.
+	systemHealthH := handler.NewSystemHealthHandler(
+		pool, // may be nil when DB_DSN is unset
+		cfg.ForgeHealthURL,
+		cfg.IndexHealthURL,
+		cfg.WeaveHealthURL,
+		cfg.HealthProbeTimeout,
+	)
 
 	var validator oidc.TokenValidator
 	var checker allowlist.Checker
@@ -128,7 +145,7 @@ func main() {
 		log.Fatalf("weave proxy: %v", err)
 	}
 
-	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, adminH, resourcePermH)
+	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, adminH, resourcePermH, systemHealthH)
 	if mockOIDC != nil {
 		mockOIDC.RegisterRoutes(router)
 	}

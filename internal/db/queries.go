@@ -132,6 +132,62 @@ func DeleteResourcePerm(ctx context.Context, pool *pgxpool.Pool, id int) (bool, 
 	return tag.RowsAffected() > 0, nil
 }
 
+// ── Service status overrides ──────────────────────────────────────────────────
+
+type ServiceStatusRow struct {
+	ID          int       `json:"id"`
+	Service     string    `json:"service"`
+	Status      string    `json:"status"`
+	Description string    `json:"description"`
+	UpdatedBy   string    `json:"updated_by"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func ListServiceStatuses(ctx context.Context, pool *pgxpool.Pool) ([]ServiceStatusRow, error) {
+	rows, err := pool.Query(ctx,
+		`SELECT id, service, status, description, updated_by, updated_at
+		 FROM service_status_overrides
+		 ORDER BY service`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ServiceStatusRow
+	for rows.Next() {
+		var r ServiceStatusRow
+		if err := rows.Scan(&r.ID, &r.Service, &r.Status, &r.Description, &r.UpdatedBy, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+func UpsertServiceStatus(ctx context.Context, pool *pgxpool.Pool, service, status, description, updatedBy string) (ServiceStatusRow, error) {
+	var r ServiceStatusRow
+	err := pool.QueryRow(ctx,
+		`INSERT INTO service_status_overrides (service, status, description, updated_by, updated_at)
+		 VALUES ($1, $2, $3, $4, NOW())
+		 ON CONFLICT (service) DO UPDATE SET
+		     status = EXCLUDED.status,
+		     description = EXCLUDED.description,
+		     updated_by = EXCLUDED.updated_by,
+		     updated_at = NOW()
+		 RETURNING id, service, status, description, updated_by, updated_at`,
+		service, status, description, updatedBy,
+	).Scan(&r.ID, &r.Service, &r.Status, &r.Description, &r.UpdatedBy, &r.UpdatedAt)
+	return r, err
+}
+
+func DeleteServiceStatus(ctx context.Context, pool *pgxpool.Pool, service string) (bool, error) {
+	tag, err := pool.Exec(ctx, `DELETE FROM service_status_overrides WHERE service = $1`, service)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 // LoadResourcePermsForUser returns all resource_permissions rows that apply to the
 // given user — matching by sub (subject_type='user'), any of their groups, or any of their roles.
 func LoadResourcePermsForUser(ctx context.Context, pool *pgxpool.Pool,

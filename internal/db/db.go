@@ -26,6 +26,14 @@ CREATE TABLE IF NOT EXISTS resource_permissions (
     created_by    TEXT NOT NULL DEFAULT '',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (subject_type, subject, permission, resource_type, resource_id)
+);
+CREATE TABLE IF NOT EXISTS service_status_overrides (
+    id          SERIAL PRIMARY KEY,
+    service     TEXT NOT NULL UNIQUE,
+    status      TEXT NOT NULL CHECK (status IN ('Healthy','Unhealthy','Offline','Maintenance')),
+    description TEXT NOT NULL DEFAULT '',
+    updated_by  TEXT NOT NULL DEFAULT '',
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );`
 
 func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {

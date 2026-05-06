@@ -47,8 +47,14 @@ type Config struct {
 	// RBAC
 	RBACConfigPath string // RBAC_CONFIG_PATH — path to rbac.yaml; default ./rbac.yaml
 
-	// Database — required when rbac.yaml group_source is "db" or "both"
+	// Database — required when rbac.yaml group_source is "db" or "both"; also used for system health overrides
 	DBDSN string // DB_DSN — PostgreSQL connection string
+
+	// System health probing — URLs for live upstream health checks
+	ForgeHealthURL     string        // FORGE_HEALTH_URL — default: ForgeURL+"/health"
+	IndexHealthURL     string        // INDEX_HEALTH_URL — default: IndexURL+"/health"
+	WeaveHealthURL     string        // WEAVE_HEALTH_URL — default: WeaveURL+"/health"
+	HealthProbeTimeout time.Duration // HEALTH_PROBE_TIMEOUT — default 5s
 }
 
 func Load() (*Config, error) {
@@ -81,6 +87,10 @@ func Load() (*Config, error) {
 
 	cfg.RBACConfigPath = envOrDefault("RBAC_CONFIG_PATH", "./rbac.yaml")
 	cfg.DBDSN = os.Getenv("DB_DSN")
+
+	cfg.ForgeHealthURL = envOrDefault("FORGE_HEALTH_URL", cfg.ForgeURL+"/health")
+	cfg.IndexHealthURL = envOrDefault("INDEX_HEALTH_URL", cfg.IndexURL+"/health")
+	cfg.WeaveHealthURL = envOrDefault("WEAVE_HEALTH_URL", cfg.WeaveURL+"/health")
 
 	if !cfg.OIDCBypass {
 		if cfg.OIDCIssuerURL == "" {
@@ -115,6 +125,9 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if cfg.SessionMaxAge, err = parseDuration("SESSION_MAX_AGE", 8*time.Hour); err != nil {
+		return nil, err
+	}
+	if cfg.HealthProbeTimeout, err = parseDuration("HEALTH_PROBE_TIMEOUT", 5*time.Second); err != nil {
 		return nil, err
 	}
 

@@ -100,6 +100,12 @@ Path patterns: `*` in the middle matches one segment; trailing `*` matches one o
 
 **ESO**: External Secrets Operator is deployed in the cluster — prefer `db.existingSecret` for production DB credentials.
 
+**DB pool lifecycle**: Pool is opened whenever `DB_DSN != ""`, regardless of `group_source`. RBAC admin handlers (`adminH`, `resourcePermH`) are still only constructed for `group_source: db/both`. Feature handlers that need DB (e.g. `SystemHealthHandler`) are constructed unconditionally and guard DB calls with `if h.pool != nil` — they degrade gracefully (no overrides) rather than failing at startup when DB is absent.
+
+**Two `/bff/admin` Gin groups**: Router registers two independent groups at `/bff/admin` with different `SessionAuth` permission guards (`admin:roles:manage` for RBAC admin, `admin:health:manage` for health overrides). Gin resolves routes correctly — do not add routes to the wrong group or the wrong permission will be enforced silently.
+
+**Probe error sanitization**: `err.Error()` from `http.Client.Do` contains internal cluster DNS names. Never return it verbatim to clients — use a generic message and `log.Printf` the real error server-side. Always drain the response body (`io.Copy(io.Discard, resp.Body)`) before closing to allow TCP connection reuse.
+
 ### Extension points
 - **Stage 2 (built)**: `GroupRoleStore` interface in `internal/rbac/store.go` replaces the yaml `group_roles` map at runtime. `StaticGroupRoleStore` (yaml), `DBGroupRoleStore` (postgres), `MergedGroupRoleStore` (union). Switch `group_source: db` or `both` in `rbac.yaml`. Requires `DB_DSN`. Admin API at `GET/POST/DELETE /bff/admin/group-roles` (requires `admin:roles:manage`).
 - **`group_source: db` bootstrap gotcha**: DB is empty on first deploy — nobody has admin role to seed it. Use `group_source: both` (yaml as baseline + DB extras) or manually `INSERT INTO group_role_assignments` via `kubectl exec` on the postgres pod.
@@ -139,6 +145,10 @@ Same Flux + Helm pattern as fusion-forge:
 | `FORGE_URL` | `http://fusion-forge.fusion.svc.cluster.local:8080` | fusion-forge base URL |
 | `INDEX_URL` | `http://fusion-index-backend.fusion.svc.cluster.local:8080` | fusion-index base URL |
 | `WEAVE_URL` | `http://fusion-weave-api.fusion.svc.cluster.local:8082` | fusion-weave API server base URL |
+| `FORGE_HEALTH_URL` | `{FORGE_URL}/health` | Health probe URL for forge (override if path differs) |
+| `INDEX_HEALTH_URL` | `{INDEX_URL}/health` | Health probe URL for index |
+| `WEAVE_HEALTH_URL` | `{WEAVE_URL}/health` | Health probe URL for weave |
+| `HEALTH_PROBE_TIMEOUT` | `5s` | Per-probe HTTP timeout for upstream health checks |
 | `K8S_SA_TOKEN_PATH` | `/var/run/secrets/kubernetes.io/serviceaccount/token` | SA token for forge/index calls (audience: fusion-bff) |
 | `WEAVE_SA_TOKEN_PATH` | `/var/run/secrets/fusion-bff/weave/token` | SA token for weave calls (no audience restriction; required for K8s TokenReview) |
 | `SA_TOKEN_CACHE_TTL` | `5m` | How long to cache SA tokens before re-reading from disk (applies to both paths) |
@@ -217,8 +227,8 @@ internal/
     db_store.go            # DBGroupRoleStore — postgres-backed
     merged_store.go        # MergedGroupRoleStore — union of static + db
   db/
-    db.go                  # Open(), Migrate() — idempotent CREATE TABLE IF NOT EXISTS; includes resource_permissions table
-    queries.go             # ListGroupRoles, CreateGroupRole, DeleteGroupRole, LoadAllGroupRoles; + ListResourcePerms, CreateResourcePerm, DeleteResourcePerm, LoadResourcePermsForUser
+    db.go                  # Open(), Migrate() — idempotent CREATE TABLE IF NOT EXISTS; includes resource_permissions + service_status_overrides tables
+    queries.go             # ListGroupRoles, CreateGroupRole, DeleteGroupRole, LoadAllGroupRoles; + ListResourcePerms, CreateResourcePerm, DeleteResourcePerm, LoadResourcePermsForUser; + ListServiceStatuses, UpsertServiceStatus, DeleteServiceStatus
   oidc/
     claims.go              # UserClaims { Subject, Email, Name, Groups }
     validator.go           # JWT validation; extracts + normalises "groups" claim
@@ -236,6 +246,7 @@ internal/
     handler/auth.go        # /bff/login, /bff/callback (resolves RBAC + resource perms), /bff/logout, /bff/userinfo
     handler/admin.go       # /bff/admin/group-roles (GET/POST/DELETE); GET /bff/admin/rbac-config
     handler/resource_permissions.go  # GET/POST/DELETE /bff/admin/resource-permissions (Stage 3)
+    handler/system_health.go  # GET /bff/system-health (all users); GET/PUT/DELETE /bff/admin/service-status (admin:health:manage)
     middleware/auth.go     # OIDC Bearer middleware — validate + allowlist + set user context
     middleware/apiauth.go  # /api/* combined middleware: session cookie + Bearer fallback + RBAC enforcement
     middleware/session_auth.go  # SessionAuth — cookie-only auth + permission check for /bff/admin/*
