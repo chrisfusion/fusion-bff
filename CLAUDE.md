@@ -261,3 +261,13 @@ flux/                      # Flux GitOps (3 environments)
 Dockerfile
 Makefile
 ```
+
+## Changelog rule
+
+**Every bugfix and every feature must be logged in `CHANGELOG.md` before the commit is made.**
+
+- Follow the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format; `../fusion-spectra/CHANGELOG.md` is the sibling project reference for style and granularity.
+- Add a new `## [x.y.z] — YYYY-MM-DD` section at the top (below `[Unreleased]`); bump the patch version for fixes, minor version for new features.
+- Use `### Added`, `### Changed`, `### Fixed`, or `### Removed` subsections as appropriate.
+- One bullet per logical change; keep it concise but self-contained (reader should not need to read the diff).
+- Also sync `deployment/rbac.yaml` and bump `deployment/Chart.yaml` `version`/`appVersion` when releasing.
