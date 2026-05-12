@@ -7,6 +7,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- fusion-content proxy: `GET /api/content/*` routes to the changelog aggregation service via SA token auth
+- `CONTENT_URL` env var (default `http://fusion-content.fusion.svc.cluster.local:8080`) and `CONTENT_HEALTH_URL` (default `{CONTENT_URL}/q/health/ready`)
+- `content:changelog:read` permission added to `admin`, `engineer`, and `viewer` roles in `rbac.yaml`
+- Route permission rule: `GET /api/content/*` → `content:changelog:read`
+- `content` added to system health probe targets (`GET /bff/system-health`) and to the `validServices` allowlist for status overrides
+
 ---
 
 ## [0.3.1] — 2026-05-07

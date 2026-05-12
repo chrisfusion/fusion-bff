@@ -89,10 +89,12 @@ config:
   forgeUrl: "http://fusion-forge.fusion.svc.cluster.local:8080"
   indexUrl: "http://fusion-index-backend.fusion.svc.cluster.local:8080"
   weaveUrl: "http://fusion-weave-api.fusion.svc.cluster.local:8082"
-  # Health probe URLs — defaults to {forgeUrl,indexUrl,weaveUrl}/health; override only if the backends expose health at a different path
+  contentUrl: "http://fusion-content.fusion.svc.cluster.local:8080"
+  # Health probe URLs — defaults shown below; override only if a backend exposes health at a different path
   forgeHealthUrl: ""
   indexHealthUrl: ""
   weaveHealthUrl: ""
+  contentHealthUrl: ""   # default: {contentUrl}/q/health/ready
   healthProbeTimeout: "5s"
   # BFF session layer — required when oidcBypass is false
   oidcRedirectUrl: ""         # e.g. https://bff.example.com/bff/callback

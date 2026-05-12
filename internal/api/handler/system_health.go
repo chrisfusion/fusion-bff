@@ -24,24 +24,26 @@ var validServiceStatuses = map[string]bool{
 }
 
 var validServices = map[string]bool{
-	"forge": true, "index": true, "weave": true, "spectra": true,
+	"forge": true, "index": true, "weave": true, "spectra": true, "content": true,
 }
 
 type SystemHealthHandler struct {
-	pool           *pgxpool.Pool // may be nil when DB_DSN is unset
-	client         *http.Client
-	forgeHealthURL string
-	indexHealthURL string
-	weaveHealthURL string
+	pool             *pgxpool.Pool // may be nil when DB_DSN is unset
+	client           *http.Client
+	forgeHealthURL   string
+	indexHealthURL   string
+	weaveHealthURL   string
+	contentHealthURL string
 }
 
-func NewSystemHealthHandler(pool *pgxpool.Pool, forgeHealthURL, indexHealthURL, weaveHealthURL string, timeout time.Duration) *SystemHealthHandler {
+func NewSystemHealthHandler(pool *pgxpool.Pool, forgeHealthURL, indexHealthURL, weaveHealthURL, contentHealthURL string, timeout time.Duration) *SystemHealthHandler {
 	return &SystemHealthHandler{
-		pool:           pool,
-		client:         &http.Client{Timeout: timeout},
-		forgeHealthURL: forgeHealthURL,
-		indexHealthURL: indexHealthURL,
-		weaveHealthURL: weaveHealthURL,
+		pool:             pool,
+		client:           &http.Client{Timeout: timeout},
+		forgeHealthURL:   forgeHealthURL,
+		indexHealthURL:   indexHealthURL,
+		weaveHealthURL:   weaveHealthURL,
+		contentHealthURL: contentHealthURL,
 	}
 }
 
@@ -82,6 +84,7 @@ func (h *SystemHealthHandler) Status(c *gin.Context) {
 		{"forge", h.forgeHealthURL},
 		{"index", h.indexHealthURL},
 		{"weave", h.weaveHealthURL},
+		{"content", h.contentHealthURL},
 	}
 
 	results := make([]liveResult, len(targets))

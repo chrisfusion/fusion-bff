@@ -24,9 +24,10 @@ func NewRouter(
 	refreshFn func(ctx context.Context, refreshToken string) (*oauth2.Token, error),
 	cfg *config.Config,
 	engine *rbac.Engine,
-	forge *proxy.UpstreamProxy,
-	index *proxy.UpstreamProxy,
-	weave *proxy.UpstreamProxy,
+	forge   *proxy.UpstreamProxy,
+	index   *proxy.UpstreamProxy,
+	weave   *proxy.UpstreamProxy,
+	content *proxy.UpstreamProxy,
 	adminH *handler.AdminHandler,
 	resourcePermH *handler.ResourcePermHandler,
 	systemHealthH *handler.SystemHealthHandler,
@@ -76,6 +77,7 @@ func NewRouter(
 	api.Any("/forge/*path", forge.Handler())
 	api.Any("/index/*path", index.Handler())
 	api.Any("/weave/*path", weave.Handler())
+	api.Any("/content/*path", content.Handler())
 
 	return r
 }

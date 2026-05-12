@@ -78,6 +78,7 @@ func main() {
 		cfg.ForgeHealthURL,
 		cfg.IndexHealthURL,
 		cfg.WeaveHealthURL,
+		cfg.ContentHealthURL,
 		cfg.HealthProbeTimeout,
 	)
 
@@ -144,8 +145,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("weave proxy: %v", err)
 	}
+	contentProxy, err := proxy.NewUpstreamProxy(cfg.ContentURL, "/api/content", saToken)
+	if err != nil {
+		log.Fatalf("content proxy: %v", err)
+	}
 
-	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, adminH, resourcePermH, systemHealthH)
+	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, contentProxy, adminH, resourcePermH, systemHealthH)
 	if mockOIDC != nil {
 		mockOIDC.RegisterRoutes(router)
 	}
