@@ -112,6 +112,11 @@ Path patterns: `*` in the middle matches one segment; trailing `*` matches one o
 - **Stage 3 (built)**: `resource_permissions` table in DB; `ResolveResourcePermissions()` in engine; `ResourcePermissions []ResourcePermission` on session; `MatchRoute()` replaces `RoutePermission()` (captures first `*` as ResourceID); `ResourcePermHandler` at `/bff/admin/resource-permissions`; `GET /bff/admin/rbac-config` for dropdown data.
 - **Resource permissions are session-bound**: `ResolveResourcePermissions` runs at login (Callback handler). Grant/revoke changes take effect only after the affected user re-logs in.
 
+### Adding weave action sub-paths (e.g., /stop, /retry)
+New action endpoints under existing weave resource paths need only a `route_permissions` entry in `rbac.yaml` (+ sync to `deployment/rbac.yaml`). The `api.Any("/weave/*path", weave.Handler())` wildcard proxy already forwards any HTTP method, stripping the `/api/weave` prefix. No router or Go code changes required.
+`weave:steps:restart` is the run-state-mutation permission (used for PATCH and action sub-paths like `/stop`). The name is historical; it covers any write that changes run phase.
+**Route ordering**: trailing `*` matches one-or-more segments, so `runs/*` matches both `runs/{name}` and `runs/{name}/stop`. For POST action rules, place the specific sub-path rule (`runs/*/stop`) before any broader POST rules to guarantee first-match wins.
+
 ## Allowlist design
 
 `ALLOWED_USERS` is comma-separated. Entries containing `@` match the JWT `email` claim; all other entries match `sub`. Empty = allow any authenticated user.

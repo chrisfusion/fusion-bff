@@ -92,6 +92,7 @@ route_permissions:
   - { method: PUT,    path: /api/weave/api/v1/triggers/*,             permission: weave:triggers:write }
   - { method: PATCH,  path: /api/weave/api/v1/triggers/*,             permission: weave:triggers:write }
   - { method: POST,   path: /api/weave/api/v1/triggers,               permission: weave:triggers:write }
+  - { method: POST,   path: /api/weave/api/v1/runs/*/stop,            permission: weave:steps:restart }
   - { method: PATCH,  path: /api/weave/api/v1/runs/*,                 permission: weave:steps:restart }
   - { method: GET,    path: /api/weave/*,                             permission: weave:resources:read }
   - { method: GET,    path: /api/content/*,                          permission: content:changelog:read }

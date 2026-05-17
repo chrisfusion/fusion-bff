@@ -8,6 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Run stop proxy: `POST /api/weave/api/v1/runs/:name/stop` forwarded to `POST /api/v1/runs/{name}/stop` on fusion-flux; gated by `weave:steps:restart` permission (admin and engineer roles)
 - fusion-content proxy: `GET /api/content/*` routes to the changelog aggregation service via SA token auth
 - `CONTENT_URL` env var (default `http://fusion-content.fusion.svc.cluster.local:8080`) and `CONTENT_HEALTH_URL` (default `{CONTENT_URL}/q/health/ready`)
 - `content:changelog:read` permission added to `admin`, `engineer`, and `viewer` roles in `rbac.yaml`
