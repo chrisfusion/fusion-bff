@@ -48,6 +48,10 @@ type Config struct {
 	// RBAC
 	RBACConfigPath string // RBAC_CONFIG_PATH — path to rbac.yaml; default ./rbac.yaml
 
+	// Logging
+	LogLevel  string // LOG_LEVEL — "debug" | "info" | "warn" | "error"; default "info"
+	LogFormat string // LOG_FORMAT — "json" | "text"; default "json"
+
 	// Database — required when rbac.yaml group_source is "db" or "both"; also used for system health overrides
 	DBDSN string // DB_DSN — PostgreSQL connection string
 
@@ -61,6 +65,8 @@ type Config struct {
 
 func Load() (*Config, error) {
 	cfg := &Config{
+		LogLevel:    envOrDefault("LOG_LEVEL", "info"),
+		LogFormat:   envOrDefault("LOG_FORMAT", "json"),
 		HTTPPort:    envOrDefault("HTTP_PORT", "8080"),
 		OIDCIssuerURL: os.Getenv("OIDC_ISSUER_URL"),
 		OIDCClientID:  os.Getenv("OIDC_CLIENT_ID"),

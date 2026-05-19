@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -45,6 +44,7 @@ func APIAuth(
 				if time.Until(sess.ExpiresAt) < 30*time.Second {
 					newTok, rerr := refreshFn(c.Request.Context(), sess.RefreshToken)
 					if rerr != nil {
+						LoggerFromCtx(c).Debug("session token refresh failed", "error", rerr)
 						store.Delete(sid)
 						clearSessionCookie(c, cfg)
 						c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -85,10 +85,12 @@ func APIAuth(
 
 		claims, err := validator.Validate(c.Request.Context(), rawToken)
 		if err != nil {
+			LoggerFromCtx(c).Debug("bearer token invalid", "error", err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 		if !checker.Permitted(claims.Subject, claims.Email) {
+			LoggerFromCtx(c).Debug("user not on allowlist", "sub", claims.Subject, "email", claims.Email)
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
@@ -96,7 +98,7 @@ func APIAuth(
 		if match.Permission != "" {
 			_, perms, rerr := engine.Resolve(c.Request.Context(), claims.Subject, claims.Groups)
 			if rerr != nil {
-				log.Printf("apiauth: rbac resolve for bearer: %v", rerr)
+				LoggerFromCtx(c).Error("apiauth: rbac resolve for bearer", "error", rerr)
 				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 				return
 			}
@@ -105,7 +107,7 @@ func APIAuth(
 				resourcePerms, rerr := engine.ResolveResourcePermissions(
 					c.Request.Context(), claims.Subject, claims.Groups, perms)
 				if rerr != nil {
-					log.Printf("apiauth: rbac resolve resource perms for bearer: %v", rerr)
+					LoggerFromCtx(c).Error("apiauth: rbac resolve resource perms for bearer", "error", rerr)
 					c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 					return
 				}

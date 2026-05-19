@@ -10,8 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"log"
+	"log/slog"
 	"math/big"
+	"os"
 	"net/http"
 	"net/url"
 	"strings"
@@ -60,7 +61,8 @@ type codeEntry struct {
 func New(cfg *config.Config, availableGroups []string) *Server {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		log.Fatalf("mockoidc: generate RSA key: %v", err)
+		slog.Error("mockoidc: generate RSA key", "error", err)
+		os.Exit(1)
 	}
 	s := &Server{
 		privateKey:      key,

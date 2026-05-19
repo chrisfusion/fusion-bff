@@ -4,7 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"log"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/fusion-platform/fusion-bff/internal/allowlist"
+	"github.com/fusion-platform/fusion-bff/internal/api/middleware"
 	"github.com/fusion-platform/fusion-bff/internal/config"
 	"github.com/fusion-platform/fusion-bff/internal/oidc"
 	"github.com/fusion-platform/fusion-bff/internal/rbac"
@@ -80,7 +82,7 @@ func NewAuthHandler(
 func (h *AuthHandler) Login(c *gin.Context) {
 	state, err := generateRandomHex(16)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		internalError(c, err)
 		return
 	}
 	verifier := oauth2.GenerateVerifier()
@@ -108,7 +110,7 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 
 	tok, err := h.oauth2Cfg.Exchange(c.Request.Context(), code, oauth2.VerifierOption(verifier))
 	if err != nil {
-		log.Printf("callback: token exchange: %v", err)
+		middleware.LoggerFromCtx(c).Error("callback: token exchange", "error", err)
 		c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": "token exchange failed"})
 		return
 	}
@@ -121,7 +123,7 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 
 	claims, err := h.validator.Validate(c.Request.Context(), rawIDToken)
 	if err != nil {
-		log.Printf("callback: id_token validation: %v", err)
+		middleware.LoggerFromCtx(c).Error("callback: id_token validation", "error", err)
 		c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": "id_token validation failed"})
 		return
 	}
@@ -133,14 +135,14 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 
 	roles, permissions, err := h.engine.Resolve(c.Request.Context(), claims.Subject, claims.Groups)
 	if err != nil {
-		log.Printf("callback: rbac resolve: %v", err)
 		// Non-fatal: user gets no roles/permissions but can still log in.
+		middleware.LoggerFromCtx(c).Warn("callback: rbac resolve", "error", err)
 		roles, permissions = nil, nil
 	}
 
 	resourcePerms, err := h.engine.ResolveResourcePermissions(c.Request.Context(), claims.Subject, claims.Groups, roles)
 	if err != nil {
-		log.Printf("callback: rbac resolve resource perms: %v", err)
+		middleware.LoggerFromCtx(c).Warn("callback: rbac resolve resource perms", "error", err)
 		resourcePerms = nil
 	}
 
@@ -159,7 +161,7 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 
 	sid, err := h.store.Create(sess)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		internalError(c, err)
 		return
 	}
 
@@ -181,7 +183,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	h.clearSessionCookie(c)
 
 	if serr == nil && sess.RefreshToken != "" {
-		h.revokeRefreshToken(sess.RefreshToken)
+		h.revokeRefreshToken(middleware.LoggerFromCtx(c), sess.RefreshToken)
 	}
 
 	endURL := h.endSessionURL
@@ -259,7 +261,7 @@ func (h *AuthHandler) clearSessionCookie(c *gin.Context) {
 
 // revokeRefreshToken calls the OIDC revocation endpoint on a best-effort basis.
 // Failures are logged but do not prevent the logout from completing.
-func (h *AuthHandler) revokeRefreshToken(refreshToken string) {
+func (h *AuthHandler) revokeRefreshToken(logger *slog.Logger, refreshToken string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -272,15 +274,16 @@ func (h *AuthHandler) revokeRefreshToken(refreshToken string) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.revokeURL,
 		strings.NewReader(data.Encode()))
 	if err != nil {
-		log.Printf("revoke: build request: %v", err)
+		logger.Warn("revoke: build request", "error", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Printf("revoke: %v", err)
+		logger.Warn("revoke", "error", err)
 		return
 	}
+	io.Copy(io.Discard, resp.Body) //nolint:errcheck
 	resp.Body.Close()
 }
 

@@ -29,7 +29,7 @@ func NewAdminHandler(pool *pgxpool.Pool, engine *rbac.Engine) *AdminHandler {
 func (h *AdminHandler) ListGroupRoles(c *gin.Context) {
 	rows, err := db.ListGroupRoles(c.Request.Context(), h.pool)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		internalError(c, err)
 		return
 	}
 	if rows == nil {
@@ -63,7 +63,7 @@ func (h *AdminHandler) CreateGroupRole(c *gin.Context) {
 			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "assignment already exists"})
 			return
 		}
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		internalError(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, row)
@@ -90,7 +90,7 @@ func (h *AdminHandler) DeleteGroupRole(c *gin.Context) {
 	}
 	found, err := db.DeleteGroupRole(c.Request.Context(), h.pool, id)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		internalError(c, err)
 		return
 	}
 	if !found {

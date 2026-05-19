@@ -23,11 +23,13 @@ func Auth(validator oidc.TokenValidator, checker allowlist.Checker) gin.HandlerF
 
 		claims, err := validator.Validate(c.Request.Context(), rawToken)
 		if err != nil {
+			LoggerFromCtx(c).Debug("bearer token invalid", "error", err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
 		if !checker.Permitted(claims.Subject, claims.Email) {
+			LoggerFromCtx(c).Debug("user not on allowlist", "sub", claims.Subject, "email", claims.Email)
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}

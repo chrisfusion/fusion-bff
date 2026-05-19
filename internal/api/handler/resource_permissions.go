@@ -27,7 +27,7 @@ func NewResourcePermHandler(pool *pgxpool.Pool) *ResourcePermHandler {
 func (h *ResourcePermHandler) List(c *gin.Context) {
 	rows, err := db.ListResourcePerms(c.Request.Context(), h.pool)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		internalError(c, err)
 		return
 	}
 	if rows == nil {
@@ -70,7 +70,7 @@ func (h *ResourcePermHandler) Create(c *gin.Context) {
 			c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "grant already exists"})
 			return
 		}
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		internalError(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, row)
@@ -85,7 +85,7 @@ func (h *ResourcePermHandler) Delete(c *gin.Context) {
 	}
 	found, err := db.DeleteResourcePerm(c.Request.Context(), h.pool, id)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		internalError(c, err)
 		return
 	}
 	if !found {

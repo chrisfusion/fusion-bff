@@ -3,7 +3,7 @@ package handler
 import (
 	"context"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -64,11 +64,12 @@ type serviceStatus struct {
 func (h *SystemHealthHandler) Status(c *gin.Context) {
 	ctx := c.Request.Context()
 
+	logger := middleware.LoggerFromCtx(c)
 	overrideMap := make(map[string]*db.ServiceStatusRow)
 	if h.pool != nil {
 		overrides, err := db.ListServiceStatuses(ctx, h.pool)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			internalError(c, err)
 			return
 		}
 		for i := range overrides {
@@ -93,7 +94,7 @@ func (h *SystemHealthHandler) Status(c *gin.Context) {
 		wg.Add(1)
 		go func(i int, url string) {
 			defer wg.Done()
-			results[i] = h.probe(ctx, url)
+			results[i] = h.probe(ctx, url, logger)
 		}(i, t.url)
 	}
 	wg.Wait()
@@ -117,7 +118,7 @@ func (h *SystemHealthHandler) Status(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"services": services})
 }
 
-func (h *SystemHealthHandler) probe(ctx context.Context, url string) liveResult {
+func (h *SystemHealthHandler) probe(ctx context.Context, url string, logger *slog.Logger) liveResult {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return liveResult{Reachable: false, Error: "probe failed"}
@@ -126,7 +127,7 @@ func (h *SystemHealthHandler) probe(ctx context.Context, url string) liveResult 
 	resp, err := h.client.Do(req)
 	latencyMs := time.Since(start).Milliseconds()
 	if err != nil {
-		log.Printf("health probe %s: %v", url, err)
+		logger.Warn("health probe failed", "url", url, "error", err)
 		return liveResult{Reachable: false, Error: "probe failed"}
 	}
 	defer func() {
@@ -150,7 +151,7 @@ func (h *SystemHealthHandler) ListOverrides(c *gin.Context) {
 	}
 	rows, err := db.ListServiceStatuses(c.Request.Context(), h.pool)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		internalError(c, err)
 		return
 	}
 	if rows == nil {
@@ -192,7 +193,7 @@ func (h *SystemHealthHandler) UpsertOverride(c *gin.Context) {
 
 	row, err := db.UpsertServiceStatus(c.Request.Context(), h.pool, service, body.Status, body.Description, updatedBy)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		internalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, row)
@@ -211,7 +212,7 @@ func (h *SystemHealthHandler) DeleteOverride(c *gin.Context) {
 	}
 	found, err := db.DeleteServiceStatus(c.Request.Context(), h.pool, service)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		internalError(c, err)
 		return
 	}
 	if !found {

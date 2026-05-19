@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,9 +28,13 @@ import (
 )
 
 func main() {
+	// Must be first — ensures startup errors are emitted in the configured format.
+	setupLogger(os.Getenv("LOG_LEVEL"), os.Getenv("LOG_FORMAT"))
+
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		slog.Error("config", "error", err)
+		os.Exit(1)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -38,7 +42,8 @@ func main() {
 
 	rbacCfg, err := rbac.LoadConfig(cfg.RBACConfigPath)
 	if err != nil {
-		log.Fatalf("rbac config: %v", err)
+		slog.Error("rbac config", "error", err)
+		os.Exit(1)
 	}
 
 	// Open DB pool whenever DB_DSN is set (used by RBAC store and system health overrides).
@@ -47,11 +52,13 @@ func main() {
 		var err error
 		pool, err = db.Open(ctx, cfg.DBDSN)
 		if err != nil {
-			log.Fatalf("db: %v", err)
+			slog.Error("db", "error", err)
+			os.Exit(1)
 		}
 		defer pool.Close()
 		if err := db.Migrate(ctx, pool); err != nil {
-			log.Fatalf("db: migrate: %v", err)
+			slog.Error("db migrate", "error", err)
+			os.Exit(1)
 		}
 	}
 
@@ -61,7 +68,8 @@ func main() {
 
 	if rbacCfg.GroupSource == "db" || rbacCfg.GroupSource == "both" {
 		if pool == nil {
-			log.Fatalf("DB_DSN is required when rbac group_source is %q", rbacCfg.GroupSource)
+			slog.Error("DB_DSN is required when rbac group_source is set", "group_source", rbacCfg.GroupSource)
+			os.Exit(1)
 		}
 		rbacEngine = rbac.NewEngine(rbacCfg, pool)
 		adminH = handler.NewAdminHandler(pool, rbacEngine)
@@ -87,14 +95,15 @@ func main() {
 	var mockOIDC *mockoidc.Server
 
 	if cfg.OIDCBypass {
-		log.Println("[WARNING] OIDC_BYPASS=true — embedded mock OIDC active — NOT for production use")
+		slog.Warn("OIDC_BYPASS=true — embedded mock OIDC active — NOT for production use")
 		mockOIDC = mockoidc.New(cfg, rbacCfg.GroupNames())
 		validator = mockOIDC.Validator()
 		checker = allowlist.New(nil)
 	} else {
 		validator, err = oidc.NewValidator(ctx, cfg.OIDCIssuerURL, cfg.OIDCClientID, cfg.OIDCJWKSURL, cfg.JWKSCacheTTL)
 		if err != nil {
-			log.Fatalf("oidc validator: %v", err)
+			slog.Error("oidc validator", "error", err)
+			os.Exit(1)
 		}
 		checker = allowlist.New(cfg.AllowedUsers)
 	}
@@ -135,19 +144,23 @@ func main() {
 
 	forgeProxy, err := proxy.NewUpstreamProxy(cfg.ForgeURL, "/api/forge", saToken)
 	if err != nil {
-		log.Fatalf("forge proxy: %v", err)
+		slog.Error("forge proxy", "error", err)
+		os.Exit(1)
 	}
 	indexProxy, err := proxy.NewUpstreamProxy(cfg.IndexURL, "/api/index", saToken)
 	if err != nil {
-		log.Fatalf("index proxy: %v", err)
+		slog.Error("index proxy", "error", err)
+		os.Exit(1)
 	}
 	weaveProxy, err := proxy.NewUpstreamProxy(cfg.WeaveURL, "/api/weave", weaveSAToken)
 	if err != nil {
-		log.Fatalf("weave proxy: %v", err)
+		slog.Error("weave proxy", "error", err)
+		os.Exit(1)
 	}
 	contentProxy, err := proxy.NewUpstreamProxy(cfg.ContentURL, "/api/content", saToken)
 	if err != nil {
-		log.Fatalf("content proxy: %v", err)
+		slog.Error("content proxy", "error", err)
+		os.Exit(1)
 	}
 
 	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, contentProxy, adminH, resourcePermH, systemHealthH)
@@ -162,15 +175,48 @@ func main() {
 
 	go func() {
 		<-ctx.Done()
-		log.Println("shutting down")
+		slog.Info("shutting down")
 		shutCtx, shutCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer shutCancel()
 		if err := srv.Shutdown(shutCtx); err != nil {
-			log.Printf("shutdown: %v", err)
+			slog.Error("shutdown", "error", err)
 		}
 	}()
 
+	slog.Info("starting server", "addr", srv.Addr)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatalf("server: %v", err)
+		slog.Error("server", "error", err)
+		os.Exit(1)
+	}
+}
+
+func setupLogger(logLevel, logFormat string) {
+	var level slog.Level
+	unknownLevel := false
+	switch logLevel {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	case "info", "":
+		level = slog.LevelInfo
+	default:
+		level = slog.LevelInfo
+		unknownLevel = true
+	}
+
+	opts := &slog.HandlerOptions{Level: level}
+	var h slog.Handler
+	if logFormat == "text" {
+		h = slog.NewTextHandler(os.Stdout, opts)
+	} else {
+		h = slog.NewJSONHandler(os.Stdout, opts)
+	}
+	slog.SetDefault(slog.New(h))
+
+	if unknownLevel {
+		slog.Warn("unrecognised LOG_LEVEL, defaulting to info", "value", logLevel)
 	}
 }

@@ -7,6 +7,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-19
+
+### Added
+- Structured logging via `log/slog`: JSON output by default, configurable via `LOG_LEVEL` (`debug`|`info`|`warn`|`error`) and `LOG_FORMAT` (`json`|`text`) env vars
+- `NewLoggingMiddleware()` in `internal/api/middleware/logging.go`: per-request logger with `request_id`, `method`, `path`, `client_ip`; emits one access log line per request
+- `LoggerFromCtx(c)` helper for handlers and middleware to attach to the per-request logger
+- `internalError(c, err)` shared handler helper that logs the error and writes a 500 response
+- Helm values `config.logLevel` and `config.logFormat` wired through ConfigMap as `LOG_LEVEL`/`LOG_FORMAT`
+- Debug-level logging for auth rejections (invalid Bearer token, allowlist block) in `APIAuth` and `Auth` middleware
+- Debug-level logging for silent session token refresh failures in `APIAuth`
+
+### Changed
+- Replaced all `log.Printf`/`log.Fatalf`/`log.Println` calls with structured `slog.*` calls throughout `main.go`, `auth.go`, `apiauth.go`, `system_health.go`, and `mockoidc/server.go`
+- Health probe goroutines now carry the per-request `*slog.Logger` (with `request_id`) for correlated probe-failure log lines
+- `revokeRefreshToken` now accepts a `*slog.Logger` parameter instead of calling `log.Printf` directly
+- Router replaced `gin.Logger()` with the new structured logging middleware (`gin.New()` was already in use)
+- SA token read failure in `proxy/upstream.go` now logs via `slog.Error` before returning 502
+- All previously-silent HTTP 500 paths in admin, resource-permissions, and system-health handlers now log the underlying error before responding
+
 ### Added
 - Run stop proxy: `POST /api/weave/api/v1/runs/:name/stop` forwarded to `POST /api/v1/runs/{name}/stop` on fusion-flux; gated by `weave:steps:restart` permission (admin and engineer roles)
 - fusion-content proxy: `GET /api/content/*` routes to the changelog aggregation service via SA token auth

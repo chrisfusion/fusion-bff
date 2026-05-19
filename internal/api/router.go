@@ -34,8 +34,7 @@ func NewRouter(
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.Use(gin.Logger())
-	r.Use(middleware.RequestID())
+	r.Use(middleware.NewLoggingMiddleware())
 	r.Use(middleware.CORS(cfg.CORSOrigins))
 
 	r.GET("/health", handler.Health)

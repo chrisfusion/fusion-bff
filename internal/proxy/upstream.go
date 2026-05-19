@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -106,6 +107,7 @@ func (u *UpstreamProxy) Handler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tok, err := u.saToken.Token(c.Request.Context())
 		if err != nil {
+			slog.Error("upstream: get SA token", "error", err)
 			c.AbortWithStatusJSON(http.StatusBadGateway, gin.H{"error": "upstream unavailable"})
 			return
 		}

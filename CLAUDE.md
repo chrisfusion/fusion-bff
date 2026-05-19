@@ -19,6 +19,15 @@ fusion-bff sits between the Vue.js web GUI and the internal fusion platform serv
 - **OIDC JWT validation** — `github.com/coreos/go-oidc/v3` against JWKS; custom `cachingKeySet` wrapper adds configurable TTL on top of `RemoteKeySet`
 - **License**: GPL-3.0
 
+## Logging
+
+Follow `../logging_principles.md` exactly. Key rules:
+- No `import "log"` anywhere — use `log/slog` throughout
+- `internal/api/middleware/logging.go`: `NewLoggingMiddleware()` + `LoggerFromCtx(c)` — handler errors must use `LoggerFromCtx(c)`, never bare `slog.*`
+- `internal/api/handler/helpers.go`: `internalError(c, err)` — use for all unexpected 500 paths (logs + responds)
+- **Gin gotcha**: `c.FullPath()` is always `""` before `c.Next()` — capture route template only in the access-log write after `c.Next()` returns
+- `setupLogger` reads `LOG_LEVEL`/`LOG_FORMAT` from env directly (not from `cfg`) so it can run before `config.Load()`; X-Request-ID is owned by `NewLoggingMiddleware` — no separate requestid middleware
+
 ## Platform context
 
 | Service | Internal URL | Purpose |
