@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-05-20
+
+### Added
+- RBAC route_permissions for `POST /api/forge/api/v1/appbuilds` and `POST /api/forge/api/v1/appbuilds/validate`, gated by `forge:builds:create`; existing `GET /api/forge/*` rule already covers list, get, and logs for app builds
+
 ## [0.4.0] — 2026-05-19
 
 ### Added
