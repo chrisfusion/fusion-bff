@@ -7,6 +7,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-05-21
+
+### Added
+- `content:help:read` permission added to `admin`, `engineer`, and `viewer` roles in `rbac.yaml`
+- Route permission rule: `GET /api/content/api/v1/help*` → `content:help:read` (placed before the existing `content:changelog:read` wildcard so help and changelog are independently gated)
+
 ## [0.4.1] — 2026-05-20
 
 ### Added

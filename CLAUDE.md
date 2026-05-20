@@ -35,6 +35,7 @@ Follow `../logging_principles.md` exactly. Key rules:
 | fusion-forge | `http://fusion-forge.{namespace}.svc.cluster.local:8080` | Async venv builder |
 | fusion-index | `http://fusion-index-backend.{namespace}.svc.cluster.local:8080` | Artifact registry |
 | fusion-weave | `http://fusion-weave-api.{namespace}.svc.cluster.local:8082` | Job DAG scheduler (operator API server) |
+| fusion-content | `http://fusion-content.{namespace}.svc.cluster.local:8080` | Help articles + changelog aggregation; health probe at `/q/health/ready` (not `/health`) |
 
 Namespace pattern: `dev-fusion` / `dev-staging-fusion` / `prod-fusion`
 
@@ -121,6 +122,10 @@ Path patterns: `*` in the middle matches one segment; trailing `*` matches one o
 - **Stage 3 (built)**: `resource_permissions` table in DB; `ResolveResourcePermissions()` in engine; `ResourcePermissions []ResourcePermission` on session; `MatchRoute()` replaces `RoutePermission()` (captures first `*` as ResourceID); `ResourcePermHandler` at `/bff/admin/resource-permissions`; `GET /bff/admin/rbac-config` for dropdown data.
 - **Resource permissions are session-bound**: `ResolveResourcePermissions` runs at login (Callback handler). Grant/revoke changes take effect only after the affected user re-logs in.
 
+### Content permission ordering
+`content:help:read` covers `GET /api/content/api/v1/help*`; `content:changelog:read` covers the remaining wildcard `GET /api/content/*`. The help rule **must appear first** — the wildcard would otherwise match help requests and gate them on the wrong permission.
+BFF path → upstream path: prefix `/api/content` is stripped, so upstream `/api/v1/help` becomes BFF path `/api/content/api/v1/help`.
+
 ### Adding weave action sub-paths (e.g., /stop, /retry)
 New action endpoints under existing weave resource paths need only a `route_permissions` entry in `rbac.yaml` (+ sync to `deployment/rbac.yaml`). The `api.Any("/weave/*path", weave.Handler())` wildcard proxy already forwards any HTTP method, stripping the `/api/weave` prefix. No router or Go code changes required.
 `weave:steps:restart` is the run-state-mutation permission (used for PATCH and action sub-paths like `/stop`). The name is historical; it covers any write that changes run phase.
@@ -162,6 +167,8 @@ Same Flux + Helm pattern as fusion-forge:
 | `FORGE_HEALTH_URL` | `{FORGE_URL}/health` | Health probe URL for forge (override if path differs) |
 | `INDEX_HEALTH_URL` | `{INDEX_URL}/health` | Health probe URL for index |
 | `WEAVE_HEALTH_URL` | `{WEAVE_URL}/health` | Health probe URL for weave |
+| `CONTENT_URL` | `http://fusion-content.fusion.svc.cluster.local:8080` | fusion-content base URL |
+| `CONTENT_HEALTH_URL` | `{CONTENT_URL}/q/health/ready` | Health probe URL for content (note: `/q/health/ready`, not `/health`) |
 | `HEALTH_PROBE_TIMEOUT` | `5s` | Per-probe HTTP timeout for upstream health checks |
 | `K8S_SA_TOKEN_PATH` | `/var/run/secrets/kubernetes.io/serviceaccount/token` | SA token for forge/index calls (audience: fusion-bff) |
 | `WEAVE_SA_TOKEN_PATH` | `/var/run/secrets/fusion-bff/weave/token` | SA token for weave calls (no audience restriction; required for K8s TokenReview) |
