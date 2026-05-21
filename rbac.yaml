@@ -40,6 +40,7 @@ role_permissions:
     - admin:users:view
     - admin:roles:manage
     - admin:health:manage
+    - index:admin:manage
   engineer:
     - index:artifacts:read
     - index:artifacts:write
@@ -83,6 +84,8 @@ route_permissions:
   - { method: PUT,    path: /api/index/api/v1/artifacts/*/tags/*,     permission: index:artifacts:write }
   - { method: DELETE, path: /api/index/api/v1/artifacts/*/tags/*,     permission: index:artifacts:write }
   - { method: "*",    path: /api/index/api/v1/types*,                 permission: index:types:manage }
+  - { method: DELETE, path: /api/index/api/v1/admin/*,               permission: index:admin:manage }
+  - { method: GET,    path: /api/index/api/v1/admin/*,               permission: index:admin:manage }
   - { method: GET,    path: /api/index/*,                             permission: index:artifacts:read }
   - { method: POST,   path: /api/forge/api/v1/venvs/validate,         permission: forge:builds:create }
   - { method: POST,   path: /api/forge/api/v1/venvs,                  permission: forge:builds:create }
