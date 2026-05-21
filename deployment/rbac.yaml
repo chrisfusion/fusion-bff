@@ -30,6 +30,8 @@ role_permissions:
     - weave:triggers:write
     - weave:triggers:delete
     - weave:steps:restart
+    - weave:runs:write
+    - weave:runs:delete
     - content:changelog:read
     - content:help:read
     - admin:users:view
@@ -48,6 +50,7 @@ role_permissions:
     - weave:chains:write
     - weave:triggers:write
     - weave:steps:restart
+    - weave:runs:write
     - content:changelog:read
     - content:help:read
     - admin:users:view
@@ -97,8 +100,10 @@ route_permissions:
   - { method: PUT,    path: /api/weave/api/v1/triggers/*,             permission: weave:triggers:write }
   - { method: PATCH,  path: /api/weave/api/v1/triggers/*,             permission: weave:triggers:write }
   - { method: POST,   path: /api/weave/api/v1/triggers,               permission: weave:triggers:write }
+  - { method: DELETE, path: /api/weave/api/v1/runs/*,                 permission: weave:runs:delete }
   - { method: POST,   path: /api/weave/api/v1/runs/*/stop,            permission: weave:steps:restart }
   - { method: PATCH,  path: /api/weave/api/v1/runs/*,                 permission: weave:steps:restart }
+  - { method: POST,   path: /api/weave/api/v1/runs,                   permission: weave:runs:write }
   - { method: GET,    path: /api/weave/*,                             permission: weave:resources:read }
   - { method: GET,    path: /api/content/api/v1/help*,               permission: content:help:read }
   - { method: GET,    path: /api/content/*,                          permission: content:changelog:read }

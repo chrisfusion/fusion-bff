@@ -7,6 +7,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-05-21
+
+### Added
+- `weave:runs:write` permission (create WeaveRun) granted to `admin` and `engineer` roles
+- `weave:runs:delete` permission (delete WeaveRun) granted to `admin` role only
+- Route permission rules: `POST /api/weave/api/v1/runs` → `weave:runs:write`; `DELETE /api/weave/api/v1/runs/*` → `weave:runs:delete`
+- Rule ordering: DELETE runs first, then POST `/stop` action, then PATCH, then POST create — consistent with other weave resource blocks
+
 ## [0.4.2] — 2026-05-21
 
 ### Added
