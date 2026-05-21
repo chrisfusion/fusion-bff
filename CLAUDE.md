@@ -28,6 +28,20 @@ Follow `../logging_principles.md` exactly. Key rules:
 - **Gin gotcha**: `c.FullPath()` is always `""` before `c.Next()` — capture route template only in the access-log write after `c.Next()` returns
 - `setupLogger` reads `LOG_LEVEL`/`LOG_FORMAT` from env directly (not from `cfg`) so it can run before `config.Load()`; X-Request-ID is owned by `NewLoggingMiddleware` — no separate requestid middleware
 
+## Sibling service references
+
+- fusion-forge API additions: `../fusion-forge/CLAUDE.md`
+- fusion-weave API additions: `../fusion-flux/CLAUDE.md` (directory is fusion-flux, service is fusion-weave)
+
+## Reflecting upstream API changes in the BFF
+
+1. Read upstream service CLAUDE.md; identify new REST endpoints
+2. Check rbac.yaml — GET endpoints are usually already covered by catch-all `GET /api/<svc>/*`; write/delete ops need explicit rules
+3. Add a new permission token per feature area (e.g. `forge:gitwatchers:write`) to appropriate roles in `role_permissions`
+4. Add route rules before the catch-all (first-match wins); follow DELETE → PUT/PATCH → POST ordering for each resource
+5. `cp rbac.yaml deployment/rbac.yaml` — always keep both in sync
+6. Add CHANGELOG entry before commit; consolidate same-session changes into one version bump
+
 ## Platform context
 
 | Service | Internal URL | Purpose |

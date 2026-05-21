@@ -7,6 +7,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.5] — 2026-05-21
+
+### Added
+- `forge:gitwatchers:write` and `forge:gitwatchers:delete` permissions granted to `admin` and `engineer` roles (GitWatcher CRUD from fusion-forge GitOps watcher)
+- Route permission rules: `POST /api/forge/api/v1/gitwatchers` + `PUT /api/forge/api/v1/gitwatchers/*` → `forge:gitwatchers:write`; `DELETE /api/forge/api/v1/gitwatchers/*` → `forge:gitwatchers:delete`; `GET` list/get remain covered by the existing `forge:builds:read` catch-all (viewer + engineer + admin)
+- `weave:monitoring:read` permission granted to `admin`, `engineer`, and `viewer` roles
+- Route permission rule: `GET /api/weave/monitor/v1/*` → `weave:monitoring:read`, placed before the general `GET /api/weave/*` catch-all to allow independent gating of the fusion-weave Monitoring API (`/monitor/v1/runs`, `/monitor/v1/stats/runs`, `/monitor/v1/chains/{name}/stats`)
+
 ## [0.4.3] — 2026-05-21
 
 ### Added

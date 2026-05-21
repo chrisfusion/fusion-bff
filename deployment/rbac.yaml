@@ -20,6 +20,8 @@ role_permissions:
     - index:types:manage
     - forge:builds:read
     - forge:builds:create
+    - forge:gitwatchers:write
+    - forge:gitwatchers:delete
     - weave:resources:read
     - weave:jobtemplates:write
     - weave:jobtemplates:delete
@@ -32,6 +34,7 @@ role_permissions:
     - weave:steps:restart
     - weave:runs:write
     - weave:runs:delete
+    - weave:monitoring:read
     - content:changelog:read
     - content:help:read
     - admin:users:view
@@ -44,6 +47,8 @@ role_permissions:
     - index:types:manage
     - forge:builds:read
     - forge:builds:create
+    - forge:gitwatchers:write
+    - forge:gitwatchers:delete
     - weave:resources:read
     - weave:jobtemplates:write
     - weave:servicetemplates:write
@@ -51,6 +56,7 @@ role_permissions:
     - weave:triggers:write
     - weave:steps:restart
     - weave:runs:write
+    - weave:monitoring:read
     - content:changelog:read
     - content:help:read
     - admin:users:view
@@ -58,6 +64,7 @@ role_permissions:
     - index:artifacts:read
     - forge:builds:read
     - weave:resources:read
+    - weave:monitoring:read
     - content:changelog:read
     - content:help:read
 
@@ -83,6 +90,9 @@ route_permissions:
   - { method: POST,   path: /api/forge/api/v1/gitbuilds,              permission: forge:builds:create }
   - { method: POST,   path: /api/forge/api/v1/appbuilds/validate,     permission: forge:builds:create }
   - { method: POST,   path: /api/forge/api/v1/appbuilds,              permission: forge:builds:create }
+  - { method: DELETE, path: /api/forge/api/v1/gitwatchers/*,          permission: forge:gitwatchers:delete }
+  - { method: PUT,    path: /api/forge/api/v1/gitwatchers/*,          permission: forge:gitwatchers:write }
+  - { method: POST,   path: /api/forge/api/v1/gitwatchers,            permission: forge:gitwatchers:write }
   - { method: GET,    path: /api/forge/*,                             permission: forge:builds:read }
   - { method: DELETE, path: /api/weave/api/v1/jobtemplates/*,         permission: weave:jobtemplates:delete }
   - { method: PUT,    path: /api/weave/api/v1/jobtemplates/*,         permission: weave:jobtemplates:write }
@@ -104,6 +114,7 @@ route_permissions:
   - { method: POST,   path: /api/weave/api/v1/runs/*/stop,            permission: weave:steps:restart }
   - { method: PATCH,  path: /api/weave/api/v1/runs/*,                 permission: weave:steps:restart }
   - { method: POST,   path: /api/weave/api/v1/runs,                   permission: weave:runs:write }
+  - { method: GET,    path: /api/weave/monitor/v1/*,                  permission: weave:monitoring:read }
   - { method: GET,    path: /api/weave/*,                             permission: weave:resources:read }
   - { method: GET,    path: /api/content/api/v1/help*,               permission: content:help:read }
   - { method: GET,    path: /api/content/*,                          permission: content:changelog:read }
