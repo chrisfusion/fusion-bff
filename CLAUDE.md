@@ -137,7 +137,12 @@ Path patterns: `*` in the middle matches one segment; trailing `*` matches one o
 - **Resource permissions are session-bound**: `ResolveResourcePermissions` runs at login (Callback handler). Grant/revoke changes take effect only after the affected user re-logs in.
 
 ### Content permission ordering
-`content:help:read` covers `GET /api/content/api/v1/help*`; `content:changelog:read` covers the remaining wildcard `GET /api/content/*`. The help rule **must appear first** — the wildcard would otherwise match help requests and gate them on the wrong permission.
+Three specific rules must appear **before** the `GET /api/content/*` catch-all (which gates on `content:changelog:read`):
+- `content:help:read`   → `GET /api/content/api/v1/help*`
+- `content:videos:read` → `GET /api/content/api/v1/videos*`
+- catch-all             → `GET /api/content/*` → `content:changelog:read`
+
+Rule ordering matters — the catch-all would otherwise match help and video requests and gate them on the wrong permission. All three permissions (`content:help:read`, `content:videos:read`, `content:changelog:read`) are granted to all roles (`admin`, `engineer`, `viewer`).
 BFF path → upstream path: prefix `/api/content` is stripped, so upstream `/api/v1/help` becomes BFF path `/api/content/api/v1/help`.
 
 ### Adding weave action sub-paths (e.g., /stop, /retry)

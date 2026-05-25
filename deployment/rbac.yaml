@@ -37,9 +37,11 @@ role_permissions:
     - weave:monitoring:read
     - content:changelog:read
     - content:help:read
+    - content:videos:read
     - admin:users:view
     - admin:roles:manage
     - admin:health:manage
+    - index:admin:manage
   engineer:
     - index:artifacts:read
     - index:artifacts:write
@@ -59,6 +61,7 @@ role_permissions:
     - weave:monitoring:read
     - content:changelog:read
     - content:help:read
+    - content:videos:read
     - admin:users:view
   viewer:
     - index:artifacts:read
@@ -67,6 +70,7 @@ role_permissions:
     - weave:monitoring:read
     - content:changelog:read
     - content:help:read
+    - content:videos:read
 
 # Granting index:artifacts:delete on a resource also grants index:versions:delete on it.
 permission_implies:
@@ -83,6 +87,8 @@ route_permissions:
   - { method: PUT,    path: /api/index/api/v1/artifacts/*/tags/*,     permission: index:artifacts:write }
   - { method: DELETE, path: /api/index/api/v1/artifacts/*/tags/*,     permission: index:artifacts:write }
   - { method: "*",    path: /api/index/api/v1/types*,                 permission: index:types:manage }
+  - { method: DELETE, path: /api/index/api/v1/admin/*,               permission: index:admin:manage }
+  - { method: GET,    path: /api/index/api/v1/admin/*,               permission: index:admin:manage }
   - { method: GET,    path: /api/index/*,                             permission: index:artifacts:read }
   - { method: POST,   path: /api/forge/api/v1/venvs/validate,         permission: forge:builds:create }
   - { method: POST,   path: /api/forge/api/v1/venvs,                  permission: forge:builds:create }
@@ -117,4 +123,5 @@ route_permissions:
   - { method: GET,    path: /api/weave/monitor/v1/*,                  permission: weave:monitoring:read }
   - { method: GET,    path: /api/weave/*,                             permission: weave:resources:read }
   - { method: GET,    path: /api/content/api/v1/help*,               permission: content:help:read }
+  - { method: GET,    path: /api/content/api/v1/videos*,            permission: content:videos:read }
   - { method: GET,    path: /api/content/*,                          permission: content:changelog:read }

@@ -37,6 +37,7 @@ role_permissions:
     - weave:monitoring:read
     - content:changelog:read
     - content:help:read
+    - content:videos:read
     - admin:users:view
     - admin:roles:manage
     - admin:health:manage
@@ -60,6 +61,7 @@ role_permissions:
     - weave:monitoring:read
     - content:changelog:read
     - content:help:read
+    - content:videos:read
     - admin:users:view
   viewer:
     - index:artifacts:read
@@ -68,6 +70,7 @@ role_permissions:
     - weave:monitoring:read
     - content:changelog:read
     - content:help:read
+    - content:videos:read
 
 # Granting index:artifacts:delete on a resource also grants index:versions:delete on it.
 permission_implies:
@@ -120,4 +123,5 @@ route_permissions:
   - { method: GET,    path: /api/weave/monitor/v1/*,                  permission: weave:monitoring:read }
   - { method: GET,    path: /api/weave/*,                             permission: weave:resources:read }
   - { method: GET,    path: /api/content/api/v1/help*,               permission: content:help:read }
+  - { method: GET,    path: /api/content/api/v1/videos*,            permission: content:videos:read }
   - { method: GET,    path: /api/content/*,                          permission: content:changelog:read }
