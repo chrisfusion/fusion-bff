@@ -21,6 +21,7 @@ role_permissions:
     - index:metrics:read
     - forge:builds:read
     - forge:builds:create
+    - forge:builds:delete
     - forge:gitwatchers:write
     - forge:gitwatchers:delete
     - weave:resources:read
@@ -51,6 +52,7 @@ role_permissions:
     - index:metrics:read
     - forge:builds:read
     - forge:builds:create
+    - forge:builds:delete
     - forge:gitwatchers:write
     - forge:gitwatchers:delete
     - weave:resources:read
@@ -100,6 +102,7 @@ route_permissions:
   - { method: POST,   path: /api/forge/api/v1/gitbuilds,              permission: forge:builds:create }
   - { method: POST,   path: /api/forge/api/v1/appbuilds/validate,     permission: forge:builds:create }
   - { method: POST,   path: /api/forge/api/v1/appbuilds,              permission: forge:builds:create }
+  - { method: DELETE, path: /api/forge/api/v1/builds,                 permission: forge:builds:delete }
   - { method: DELETE, path: /api/forge/api/v1/gitwatchers/*,          permission: forge:gitwatchers:delete }
   - { method: PUT,    path: /api/forge/api/v1/gitwatchers/*,          permission: forge:gitwatchers:write }
   - { method: POST,   path: /api/forge/api/v1/gitwatchers,            permission: forge:gitwatchers:write }

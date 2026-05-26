@@ -7,6 +7,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.7] — 2026-05-27
+
+### Added
+- `forge:builds:delete` permission granted to `admin` and `engineer` roles (bulk build delete from fusion-forge `BuildsHandler`)
+- Route permission rule: `DELETE /api/forge/api/v1/builds` → `forge:builds:delete`, placed before the `GET /api/forge/*` catch-all
+
 ## [0.4.6] — 2026-05-27
 
 ### Added
