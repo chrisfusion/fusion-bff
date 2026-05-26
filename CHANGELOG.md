@@ -7,6 +7,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.6] — 2026-05-27
+
+### Added
+- `index:metrics:read` permission added to `admin`, `engineer`, and `viewer` roles in `rbac.yaml`
+- Route permission rule: `GET /api/index/q/metrics` → `index:metrics:read`, placed before the `GET /api/index/*` catch-all (fusion-index aggregate metrics endpoint; TTL-cached on the index side via `METRICS_CACHE_TTL`)
+
 ## [0.4.5] — 2026-05-21
 
 ### Added

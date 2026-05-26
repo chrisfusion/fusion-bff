@@ -18,6 +18,7 @@ role_permissions:
     - index:versions:write
     - index:versions:delete
     - index:types:manage
+    - index:metrics:read
     - forge:builds:read
     - forge:builds:create
     - forge:gitwatchers:write
@@ -47,6 +48,7 @@ role_permissions:
     - index:artifacts:write
     - index:versions:write
     - index:types:manage
+    - index:metrics:read
     - forge:builds:read
     - forge:builds:create
     - forge:gitwatchers:write
@@ -65,6 +67,7 @@ role_permissions:
     - admin:users:view
   viewer:
     - index:artifacts:read
+    - index:metrics:read
     - forge:builds:read
     - weave:resources:read
     - weave:monitoring:read
@@ -89,6 +92,7 @@ route_permissions:
   - { method: "*",    path: /api/index/api/v1/types*,                 permission: index:types:manage }
   - { method: DELETE, path: /api/index/api/v1/admin/*,               permission: index:admin:manage }
   - { method: GET,    path: /api/index/api/v1/admin/*,               permission: index:admin:manage }
+  - { method: GET,    path: /api/index/q/metrics,                     permission: index:metrics:read }
   - { method: GET,    path: /api/index/*,                             permission: index:artifacts:read }
   - { method: POST,   path: /api/forge/api/v1/venvs/validate,         permission: forge:builds:create }
   - { method: POST,   path: /api/forge/api/v1/venvs,                  permission: forge:builds:create }

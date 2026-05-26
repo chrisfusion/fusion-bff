@@ -39,7 +39,8 @@ Follow `../logging_principles.md` exactly. Key rules:
 2. Check rbac.yaml — GET endpoints are usually already covered by catch-all `GET /api/<svc>/*`; write/delete ops need explicit rules
 3. Add a new permission token per feature area (e.g. `forge:gitwatchers:write`) to appropriate roles in `role_permissions`
 4. Add route rules before the catch-all (first-match wins); follow DELETE → PUT/PATCH → POST ordering for each resource
-5. `cp rbac.yaml deployment/rbac.yaml` — always keep both in sync
+5. **"Always public" upstream endpoints** (no SA token auth on the upstream side) still get their own named BFF permission (e.g. `index:metrics:read`) rather than relying on a catch-all — keeps each feature independently gatable even when all roles currently share it.
+6. `cp rbac.yaml deployment/rbac.yaml` — always keep both in sync
 6. Add CHANGELOG entry before commit; consolidate same-session changes into one version bump
 
 ## Platform context
@@ -311,3 +312,4 @@ Makefile
 - Use `### Added`, `### Changed`, `### Fixed`, or `### Removed` subsections as appropriate.
 - One bullet per logical change; keep it concise but self-contained (reader should not need to read the diff).
 - Also sync `deployment/rbac.yaml` and bump `deployment/Chart.yaml` `version`/`appVersion` when releasing.
+- **`deployment/Chart.yaml` drift**: Before bumping for a new release, check `version` against the latest CHANGELOG `[x.y.z]` entry — they can diverge if prior sessions added CHANGELOG entries without bumping the chart. Next release version is `max(chart.version, changelog.latest) + patch`.
