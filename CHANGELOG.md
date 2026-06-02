@@ -7,6 +7,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.8] — 2026-06-02
+
+### Added
+- `forge:admin:manage` permission granted to `admin` role for the new fusion-forge zombie-cleanup endpoint
+- Route permission rule: `POST /api/forge/api/v1/builds/zombie-cleanup` → `forge:admin:manage` (admin-only; cleans up PENDING/BUILDING builds whose CIBuild CR no longer exists in K8s)
+
 ## [0.4.7] — 2026-05-27
 
 ### Added

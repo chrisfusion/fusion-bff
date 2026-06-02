@@ -35,9 +35,9 @@ Follow `../logging_principles.md` exactly. Key rules:
 
 ## Reflecting upstream API changes in the BFF
 
-1. Read upstream service CLAUDE.md; identify new REST endpoints
+1. Read upstream service CLAUDE.md; identify new REST endpoints. Practical discovery: `cd ../fusion-forge && git log --oneline -5` then `git show <hash>` to read the diff of the latest commit.
 2. Check rbac.yaml — GET endpoints are usually already covered by catch-all `GET /api/<svc>/*`; write/delete ops need explicit rules
-3. Add a new permission token per feature area (e.g. `forge:gitwatchers:write`) to appropriate roles in `role_permissions`
+3. Add a new permission token per feature area (e.g. `forge:gitwatchers:write`) to appropriate roles in `role_permissions`. Admin-only forge maintenance endpoints use `forge:admin:manage` (parallel to `index:admin:manage`).
 4. Add route rules before the catch-all (first-match wins); follow DELETE → PUT/PATCH → POST ordering for each resource
 5. **"Always public" upstream endpoints** (no SA token auth on the upstream side) still get their own named BFF permission (e.g. `index:metrics:read`) rather than relying on a catch-all — keeps each feature independently gatable even when all roles currently share it.
 6. `cp rbac.yaml deployment/rbac.yaml` — always keep both in sync
