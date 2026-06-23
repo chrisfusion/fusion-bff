@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-23
+
+### Fixed
+- `test/e2e/e2e_test.go` no longer fails to build — `api.NewRouter` call was missing the `content` proxy and the `adminH`/`resourcePermH`/`systemHealthH` params added in earlier releases; added a content upstream/proxy mirroring forge/index/weave and `nil` for the unused handler params
+
+### Added
+- OpenAPI spec (`internal/docs/openapi.yaml`) documenting `/bff/*` endpoints and the `/api/*` proxy routes; embedded into the binary via `go:embed`
+- `GET /bff/openapi.yaml` — serves the raw spec
+- `GET /bff/docs/*` — Swagger UI (via `swaggo/gin-swagger` + `swaggo/files`) for browsing the spec; both routes are public/unauthenticated and purely additive — no existing route, handler, or middleware was changed
+
 ## [0.4.8] — 2026-06-02
 
 ### Added

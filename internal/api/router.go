@@ -10,6 +10,7 @@ import (
 	"github.com/fusion-platform/fusion-bff/internal/api/handler"
 	"github.com/fusion-platform/fusion-bff/internal/api/middleware"
 	"github.com/fusion-platform/fusion-bff/internal/config"
+	"github.com/fusion-platform/fusion-bff/internal/docs"
 	"github.com/fusion-platform/fusion-bff/internal/oidc"
 	"github.com/fusion-platform/fusion-bff/internal/proxy"
 	"github.com/fusion-platform/fusion-bff/internal/rbac"
@@ -42,6 +43,8 @@ func NewRouter(
 	r.GET("/readyz", handler.Readyz)
 
 	bff := r.Group("/bff")
+	bff.GET("/openapi.yaml", docs.SpecHandler)
+	bff.GET("/docs/*any", docs.UIHandler())
 	bff.GET("/login", authH.Login)
 	bff.GET("/callback", authH.Callback)
 	bff.POST("/logout", authH.Logout)

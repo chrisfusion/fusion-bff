@@ -1,0 +1,446 @@
+openapi: 3.0.3
+info:
+  title: fusion-bff API
+  description: >
+    Backend for Frontend for the fusion platform GUI. Validates OIDC sessions,
+    enforces RBAC, and proxies authenticated requests to fusion-forge,
+    fusion-index, fusion-weave, and fusion-content.
+  version: 0.5.0
+  license:
+    name: GPL-3.0
+
+servers:
+  - url: /
+
+tags:
+  - name: health
+    description: Unauthenticated liveness/readiness probes
+  - name: auth
+    description: OIDC PKCE login flow and session endpoints
+  - name: rbac-admin
+    description: Group-to-role assignment admin (requires admin:roles:manage)
+  - name: system-health
+    description: Live upstream probing and manual status overrides
+  - name: proxy
+    description: >
+      Authenticated passthrough to fusion-forge, fusion-index, fusion-weave,
+      and fusion-content. The BFF strips the /api/<service> prefix and
+      forwards the remaining path verbatim; request/response bodies match
+      each upstream service's own API. RBAC permission required per route
+      is defined in rbac.yaml (route_permissions) and is not enumerated here.
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      responses:
+        "200": { description: OK }
+  /livez:
+    get:
+      tags: [health]
+      summary: Liveness probe (Kubernetes convention)
+      responses:
+        "200": { description: OK }
+  /readyz:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      responses:
+        "200": { description: OK }
+
+  /bff/login:
+    get:
+      tags: [auth]
+      summary: Start OIDC PKCE login
+      description: Redirects the browser to the configured OIDC provider's authorization endpoint.
+      responses:
+        "302": { description: Redirect to OIDC provider }
+
+  /bff/callback:
+    get:
+      tags: [auth]
+      summary: OIDC authorization code callback
+      description: >
+        Exchanges the authorization code, validates the ID token, checks the
+        allowlist, resolves RBAC roles/permissions, creates a server-side
+        session, sets the HttpOnly session cookie, and redirects to
+        POST_LOGIN_REDIRECT_URL.
+      parameters:
+        - in: query
+          name: state
+          required: true
+          schema: { type: string }
+        - in: query
+          name: code
+          required: true
+          schema: { type: string }
+      responses:
+        "302": { description: Redirect to POST_LOGIN_REDIRECT_URL }
+        "400": { description: Missing/invalid state or code }
+        "403": { description: User not on allowlist }
+        "502": { description: Token exchange or ID token validation failed }
+
+  /bff/logout:
+    post:
+      tags: [auth]
+      summary: Log out
+      description: Revokes the refresh token, deletes the server-side session, clears the cookie, and redirects to the OIDC end_session endpoint.
+      responses:
+        "302": { description: Redirect to OIDC end_session endpoint }
+
+  /bff/userinfo:
+    get:
+      tags: [auth]
+      summary: Get current session identity
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Authenticated user identity and resolved RBAC grants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sub: { type: string }
+                  email: { type: string }
+                  name: { type: string }
+                  roles:
+                    type: array
+                    items: { type: string }
+                  permissions:
+                    type: array
+                    items: { type: string }
+                  resource_permissions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        permission: { type: string }
+                        resource_type: { type: string }
+                        resource_id: { type: string }
+        "401": { description: No valid session }
+
+  /bff/system-health:
+    get:
+      tags: [system-health]
+      summary: Live status of all upstream services plus manual overrides
+      description: Available to any authenticated user, regardless of role.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Per-service live probe result and any manual override
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  services:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string, example: forge }
+                        live:
+                          type: object
+                          nullable: true
+                          properties:
+                            reachable: { type: boolean }
+                            status_code: { type: integer, nullable: true }
+                            latency_ms: { type: integer, nullable: true }
+                            error: { type: string }
+                        override:
+                          type: object
+                          nullable: true
+                          properties:
+                            service: { type: string }
+                            status: { type: string, enum: [Healthy, Unhealthy, Offline, Maintenance] }
+                            description: { type: string }
+
+  /bff/admin/group-roles:
+    get:
+      tags: [rbac-admin]
+      summary: List group → role assignments
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: All DB-backed group-role assignments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/GroupRoleRow" }
+    post:
+      tags: [rbac-admin]
+      summary: Create a group → role assignment
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [group, role]
+              properties:
+                group: { type: string }
+                role: { type: string }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupRoleRow" }
+        "400": { description: group and role are required }
+        "409": { description: Assignment already exists }
+
+  /bff/admin/group-roles/{id}:
+    delete:
+      tags: [rbac-admin]
+      summary: Delete a group → role assignment
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted }
+        "400": { description: Invalid id }
+        "404": { description: Not found }
+
+  /bff/admin/rbac-config:
+    get:
+      tags: [rbac-admin]
+      summary: Static roles/groups/permissions lists (for admin UI dropdowns)
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items: { type: string }
+                  groups:
+                    type: array
+                    items: { type: string }
+                  permissions:
+                    type: array
+                    items: { type: string }
+
+  /bff/admin/resource-permissions:
+    get:
+      tags: [rbac-admin]
+      summary: List resource-scoped permission grants
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ResourcePermRow" }
+    post:
+      tags: [rbac-admin]
+      summary: Grant a resource-scoped permission
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject_type, subject, permission, resource_type, resource_id]
+              properties:
+                subject_type: { type: string, enum: [user, group, role] }
+                subject: { type: string }
+                permission: { type: string }
+                resource_type: { type: string }
+                resource_id: { type: string }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResourcePermRow" }
+        "400": { description: All fields are required, or invalid subject_type }
+        "409": { description: Grant already exists }
+
+  /bff/admin/resource-permissions/{id}:
+    delete:
+      tags: [rbac-admin]
+      summary: Revoke a resource-scoped permission grant
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted }
+        "400": { description: Invalid id }
+        "404": { description: Not found }
+
+  /bff/admin/service-status:
+    get:
+      tags: [system-health]
+      summary: List manual service status overrides
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ServiceStatusRow" }
+        "503": { description: Database not configured }
+
+  /bff/admin/service-status/{service}:
+    put:
+      tags: [system-health]
+      summary: Create or update a manual service status override
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - in: path
+          name: service
+          required: true
+          schema: { type: string, enum: [forge, index, weave, spectra, content] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [Healthy, Unhealthy, Offline, Maintenance] }
+                description: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServiceStatusRow" }
+        "400": { description: Unknown service, or invalid status }
+        "503": { description: Database not configured }
+    delete:
+      tags: [system-health]
+      summary: Remove a manual service status override
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - in: path
+          name: service
+          required: true
+          schema: { type: string, enum: [forge, index, weave, spectra, content] }
+      responses:
+        "204": { description: Deleted }
+        "400": { description: Unknown service }
+        "404": { description: Not found }
+        "503": { description: Database not configured }
+
+  /api/forge/{path}:
+    $ref: "#/components/pathItems/proxy"
+  /api/index/{path}:
+    $ref: "#/components/pathItems/proxy"
+  /api/weave/{path}:
+    $ref: "#/components/pathItems/proxy"
+  /api/content/{path}:
+    $ref: "#/components/pathItems/proxy"
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: sid
+      description: HttpOnly session cookie set by /bff/callback
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OIDC access token, accepted as a fallback when no session cookie is present
+
+  schemas:
+    GroupRoleRow:
+      type: object
+      properties:
+        id: { type: integer }
+        group: { type: string }
+        role: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+    ResourcePermRow:
+      type: object
+      properties:
+        id: { type: integer }
+        subject_type: { type: string, enum: [user, group, role] }
+        subject: { type: string }
+        permission: { type: string }
+        resource_type: { type: string }
+        resource_id: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+    ServiceStatusRow:
+      type: object
+      properties:
+        service: { type: string }
+        status: { type: string, enum: [Healthy, Unhealthy, Offline, Maintenance] }
+        description: { type: string }
+        updated_by: { type: string }
+        updated_at: { type: string, format: date-time }
+
+  pathItems:
+    proxy:
+      parameters:
+        - in: path
+          name: path
+          required: true
+          schema: { type: string }
+          description: Upstream path, forwarded verbatim after stripping the /api/<service> prefix
+      get:
+        tags: [proxy]
+        summary: Proxy passthrough (any HTTP method)
+        security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+        responses:
+          "200": { description: Upstream response, forwarded verbatim }
+          "401": { description: No valid session or bearer token }
+          "403": { description: Missing required RBAC permission for this route }
+      post:
+        tags: [proxy]
+        summary: Proxy passthrough (any HTTP method)
+        security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+        responses:
+          "200": { description: Upstream response, forwarded verbatim }
+          "401": { description: No valid session or bearer token }
+          "403": { description: Missing required RBAC permission for this route }
+      put:
+        tags: [proxy]
+        summary: Proxy passthrough (any HTTP method)
+        security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+        responses:
+          "200": { description: Upstream response, forwarded verbatim }
+          "401": { description: No valid session or bearer token }
+          "403": { description: Missing required RBAC permission for this route }
+      patch:
+        tags: [proxy]
+        summary: Proxy passthrough (any HTTP method)
+        security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+        responses:
+          "200": { description: Upstream response, forwarded verbatim }
+          "401": { description: No valid session or bearer token }
+          "403": { description: Missing required RBAC permission for this route }
+      delete:
+        tags: [proxy]
+        summary: Proxy passthrough (any HTTP method)
+        security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+        responses:
+          "200": { description: Upstream response, forwarded verbatim }
+          "401": { description: No valid session or bearer token }
+          "403": { description: Missing required RBAC permission for this route }

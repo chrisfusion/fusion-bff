@@ -40,9 +40,10 @@ var (
 	oidcSrv      *httptest.Server
 	bffServer    *httptest.Server
 	store        *session.InMemoryStore
-	forgeCapture capturedRequest
-	indexCapture capturedRequest
-	weaveCapture capturedRequest
+	forgeCapture   capturedRequest
+	indexCapture   capturedRequest
+	weaveCapture   capturedRequest
+	contentCapture capturedRequest
 )
 
 func TestMain(m *testing.M) {
@@ -65,6 +66,9 @@ func TestMain(m *testing.M) {
 	weaveSrv := newUpstreamServerGlobal(&weaveCapture)
 	defer weaveSrv.Close()
 
+	contentSrv := newUpstreamServerGlobal(&contentCapture)
+	defer contentSrv.Close()
+
 	saFile, _ := os.CreateTemp("", "sa-token-*")
 	saFile.WriteString("test-sa-token")
 	saFile.Close()
@@ -83,6 +87,7 @@ func TestMain(m *testing.M) {
 	os.Setenv("FORGE_URL", forgeSrv.URL)
 	os.Setenv("INDEX_URL", indexSrv.URL)
 	os.Setenv("WEAVE_URL", weaveSrv.URL)
+	os.Setenv("CONTENT_URL", contentSrv.URL)
 	os.Setenv("K8S_SA_TOKEN_PATH", saFile.Name())
 	os.Setenv("WEAVE_SA_TOKEN_PATH", weaveSAFile.Name())
 	os.Setenv("SA_TOKEN_CACHE_TTL", "1s")
@@ -141,8 +146,9 @@ func TestMain(m *testing.M) {
 	forgeProxy, _ := proxy.NewUpstreamProxy(cfg.ForgeURL, "/api/forge", saToken)
 	indexProxy, _ := proxy.NewUpstreamProxy(cfg.IndexURL, "/api/index", saToken)
 	weaveProxy, _ := proxy.NewUpstreamProxy(cfg.WeaveURL, "/api/weave", weaveSAToken)
+	contentProxy, _ := proxy.NewUpstreamProxy(cfg.ContentURL, "/api/content", saToken)
 
-	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, nil, nil)
+	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, contentProxy, nil, nil, nil)
 	bffServer = httptest.NewServer(router)
 	defer bffServer.Close()
 
