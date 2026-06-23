@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - `test/e2e/e2e_test.go` no longer fails to build — `api.NewRouter` call was missing the `content` proxy and the `adminH`/`resourcePermH`/`systemHealthH` params added in earlier releases; added a content upstream/proxy mirroring forge/index/weave and `nil` for the unused handler params
+- `flux/prod-fusion/helmrelease.yaml` chart version constraint was pinned to `~0.1.0`, which never tracked any release past `0.1.x` (chart has been at `0.4.x`+ for several releases); changed to `>=0.4.0` so prod can pick up current and future chart versions
 
 ### Added
 - OpenAPI spec (`internal/docs/openapi.yaml`) documenting `/bff/*` endpoints and the `/api/*` proxy routes; embedded into the binary via `go:embed`
