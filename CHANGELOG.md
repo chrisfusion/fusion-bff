@@ -7,6 +7,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-07-02
+
+### Added
+- `weave:batchtriggers:write` / `weave:batchtriggers:delete` permissions granted to `admin` (write+delete) and `engineer` (write only), for fusion-weave's new `BatchCron` trigger type REST endpoints (`/api/v1/batchtriggers`, `/validate`, `/{name}/stop`, `/{name}/resume`)
+- `weave:kafkatriggers:write` / `weave:kafkatriggers:delete` permissions granted to `admin` (write+delete) and `engineer` (write only), for fusion-weave's new `Kafka` trigger type REST endpoints (`/api/v1/kafkatriggers`)
+- Route permission rules for `DELETE/PUT/PATCH/POST /api/weave/api/v1/batchtriggers*` and `DELETE/PUT/PATCH/POST /api/weave/api/v1/kafkatriggers*`, placed before the `GET /api/weave/*` catch-all; GET list/get for both resources already covered by the existing catch-all under `weave:resources:read`
+- OpenAPI spec version bumped to match; no path changes required since `/api/weave/{path}` already documents the proxy generically and defers to `rbac.yaml` for per-route permissions
+
 ## [0.5.0] — 2026-06-23
 
 ### Fixed

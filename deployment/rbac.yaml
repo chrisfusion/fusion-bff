@@ -34,6 +34,10 @@ role_permissions:
     - weave:chains:delete
     - weave:triggers:write
     - weave:triggers:delete
+    - weave:batchtriggers:write
+    - weave:batchtriggers:delete
+    - weave:kafkatriggers:write
+    - weave:kafkatriggers:delete
     - weave:steps:restart
     - weave:runs:write
     - weave:runs:delete
@@ -61,6 +65,8 @@ role_permissions:
     - weave:servicetemplates:write
     - weave:chains:write
     - weave:triggers:write
+    - weave:batchtriggers:write
+    - weave:kafkatriggers:write
     - weave:steps:restart
     - weave:runs:write
     - weave:monitoring:read
@@ -125,6 +131,17 @@ route_permissions:
   - { method: PUT,    path: /api/weave/api/v1/triggers/*,             permission: weave:triggers:write }
   - { method: PATCH,  path: /api/weave/api/v1/triggers/*,             permission: weave:triggers:write }
   - { method: POST,   path: /api/weave/api/v1/triggers,               permission: weave:triggers:write }
+  - { method: DELETE, path: /api/weave/api/v1/batchtriggers/*,        permission: weave:batchtriggers:delete }
+  - { method: PUT,    path: /api/weave/api/v1/batchtriggers/*,        permission: weave:batchtriggers:write }
+  - { method: PATCH,  path: /api/weave/api/v1/batchtriggers/*,        permission: weave:batchtriggers:write }
+  - { method: POST,   path: /api/weave/api/v1/batchtriggers/validate, permission: weave:batchtriggers:write }
+  - { method: POST,   path: /api/weave/api/v1/batchtriggers/*/stop,   permission: weave:batchtriggers:write }
+  - { method: POST,   path: /api/weave/api/v1/batchtriggers/*/resume, permission: weave:batchtriggers:write }
+  - { method: POST,   path: /api/weave/api/v1/batchtriggers,          permission: weave:batchtriggers:write }
+  - { method: DELETE, path: /api/weave/api/v1/kafkatriggers/*,        permission: weave:kafkatriggers:delete }
+  - { method: PUT,    path: /api/weave/api/v1/kafkatriggers/*,        permission: weave:kafkatriggers:write }
+  - { method: PATCH,  path: /api/weave/api/v1/kafkatriggers/*,        permission: weave:kafkatriggers:write }
+  - { method: POST,   path: /api/weave/api/v1/kafkatriggers,          permission: weave:kafkatriggers:write }
   - { method: DELETE, path: /api/weave/api/v1/runs/*,                 permission: weave:runs:delete }
   - { method: POST,   path: /api/weave/api/v1/runs/*/stop,            permission: weave:steps:restart }
   - { method: PATCH,  path: /api/weave/api/v1/runs/*,                 permission: weave:steps:restart }

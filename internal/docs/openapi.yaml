@@ -5,7 +5,7 @@ info:
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions,
     enforces RBAC, and proxies authenticated requests to fusion-forge,
     fusion-index, fusion-weave, and fusion-content.
-  version: 0.5.0
+  version: 0.5.1
   license:
     name: GPL-3.0
 

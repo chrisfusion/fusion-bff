@@ -41,7 +41,9 @@ Follow `../logging_principles.md` exactly. Key rules:
 4. Add route rules before the catch-all (first-match wins); follow DELETE → PUT/PATCH → POST ordering for each resource
 5. **"Always public" upstream endpoints** (no SA token auth on the upstream side) still get their own named BFF permission (e.g. `index:metrics:read`) rather than relying on a catch-all — keeps each feature independently gatable even when all roles currently share it.
 6. `cp rbac.yaml deployment/rbac.yaml` — always keep both in sync
-6. Add CHANGELOG entry before commit; consolidate same-session changes into one version bump
+7. `internal/docs/openapi.yaml` needs no path-level edits for new proxied endpoints — `/api/<svc>/{path}` is one generic `pathItems.proxy` entry per service and explicitly defers RBAC to `rbac.yaml`; just bump its `info.version` to match the release.
+8. Add CHANGELOG entry before commit; consolidate same-session changes into one version bump. **RBAC-only additions (new permission + route rule, no Go code change) bump the patch version**, even though they're `### Added` — see 0.4.6, 0.4.7, 0.4.8, 0.5.1 for precedent.
+9. To verify the real root `rbac.yaml` parses (unit tests in `internal/rbac` use fixture YAML strings, not the live file): temporarily add a test calling `LoadConfig("../../rbac.yaml")`, run it, delete it.
 
 ## Platform context
 
