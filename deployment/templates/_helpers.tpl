@@ -35,6 +35,19 @@
 {{- end -}}
 {{- end }}
 
+{{/*
+Secret name holding the PostgreSQL admin/superuser credentials (key: "password")
+used by the one-time create-database Job. Not the same secret as dbSecretName
+above, which holds the app's own runtime DB_DSN.
+*/}}
+{{- define "fusion-bff.pgAdminSecretName" -}}
+{{- if .Values.postgresql.external.existingSecret -}}
+{{ .Values.postgresql.external.existingSecret }}
+{{- else -}}
+{{ include "fusion-bff.fullname" . }}-postgresql-admin
+{{- end -}}
+{{- end }}
+
 {{- define "fusion-bff.labels" -}}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 app.kubernetes.io/name: {{ include "fusion-bff.name" . }}

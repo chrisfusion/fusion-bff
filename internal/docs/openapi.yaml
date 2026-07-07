@@ -1,136 +1,162 @@
 openapi: 3.0.3
 info:
   title: fusion-bff API
-  description: >
-    Backend for Frontend for the fusion platform GUI. Validates OIDC sessions,
-    enforces RBAC, and proxies authenticated requests to fusion-forge,
-    fusion-index, fusion-weave, and fusion-content.
-  version: 0.5.1
+  description: |
+    Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, and fusion-content.
+  version: 0.6.1
   license:
     name: GPL-3.0
-
 servers:
-  - url: /
-
+- url: /
 tags:
-  - name: health
-    description: Unauthenticated liveness/readiness probes
-  - name: auth
-    description: OIDC PKCE login flow and session endpoints
-  - name: rbac-admin
-    description: Group-to-role assignment admin (requires admin:roles:manage)
-  - name: system-health
-    description: Live upstream probing and manual status overrides
-  - name: proxy
-    description: >
-      Authenticated passthrough to fusion-forge, fusion-index, fusion-weave,
-      and fusion-content. The BFF strips the /api/<service> prefix and
-      forwards the remaining path verbatim; request/response bodies match
-      each upstream service's own API. RBAC permission required per route
-      is defined in rbac.yaml (route_permissions) and is not enumerated here.
-
+- name: health
+  description: Unauthenticated liveness/readiness probes
+- name: auth
+  description: OIDC PKCE login flow and session endpoints
+- name: rbac-admin
+  description: Group-to-role assignment admin (requires admin:roles:manage)
+- name: system-health
+  description: Live upstream probing and manual status overrides
+- name: forge
+  description: Explicitly documented fusion-forge proxy endpoints (venvs, gitbuilds, appbuilds, gitwatchers).
+- name: index
+  description: Explicitly documented fusion-index proxy endpoints (artifacts, versions, tags, files, types).
+- name: weave
+  description: Explicitly documented fusion-weave proxy endpoints (job/service templates, chains, triggers,
+    runs).
+- name: weave-monitoring
+  description: Explicitly documented fusion-weave /monitor/v1 read-only endpoints.
+- name: content
+  description: Explicitly documented fusion-content proxy endpoints (changelog, help, videos).
+- name: proxy
+  description: Fallback passthrough to fusion-forge, fusion-index, fusion-weave, and fusion-content for
+    any route not explicitly documented above (e.g. a newly added upstream endpoint not yet reflected
+    here). The BFF strips the /api/<service> prefix and forwards the remaining path verbatim; request/response
+    bodies match each upstream service's own API. RBAC permission required per route is defined in rbac.yaml
+    (route_permissions) and is not enumerated here.
 paths:
   /health:
     get:
-      tags: [health]
+      tags:
+      - health
       summary: Liveness probe
       responses:
-        "200": { description: OK }
+        '200':
+          description: OK
   /livez:
     get:
-      tags: [health]
+      tags:
+      - health
       summary: Liveness probe (Kubernetes convention)
       responses:
-        "200": { description: OK }
+        '200':
+          description: OK
   /readyz:
     get:
-      tags: [health]
+      tags:
+      - health
       summary: Readiness probe
       responses:
-        "200": { description: OK }
-
+        '200':
+          description: OK
   /bff/login:
     get:
-      tags: [auth]
+      tags:
+      - auth
       summary: Start OIDC PKCE login
       description: Redirects the browser to the configured OIDC provider's authorization endpoint.
       responses:
-        "302": { description: Redirect to OIDC provider }
-
+        '302':
+          description: Redirect to OIDC provider
   /bff/callback:
     get:
-      tags: [auth]
+      tags:
+      - auth
       summary: OIDC authorization code callback
-      description: >
-        Exchanges the authorization code, validates the ID token, checks the
-        allowlist, resolves RBAC roles/permissions, creates a server-side
-        session, sets the HttpOnly session cookie, and redirects to
-        POST_LOGIN_REDIRECT_URL.
+      description: |
+        Exchanges the authorization code, validates the ID token, checks the allowlist, resolves RBAC roles/permissions, creates a server-side session, sets the HttpOnly session cookie, and redirects to POST_LOGIN_REDIRECT_URL.
       parameters:
-        - in: query
-          name: state
-          required: true
-          schema: { type: string }
-        - in: query
-          name: code
-          required: true
-          schema: { type: string }
+      - in: query
+        name: state
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: code
+        required: true
+        schema:
+          type: string
       responses:
-        "302": { description: Redirect to POST_LOGIN_REDIRECT_URL }
-        "400": { description: Missing/invalid state or code }
-        "403": { description: User not on allowlist }
-        "502": { description: Token exchange or ID token validation failed }
-
+        '302':
+          description: Redirect to POST_LOGIN_REDIRECT_URL
+        '400':
+          description: Missing/invalid state or code
+        '403':
+          description: User not on allowlist
+        '502':
+          description: Token exchange or ID token validation failed
   /bff/logout:
     post:
-      tags: [auth]
+      tags:
+      - auth
       summary: Log out
-      description: Revokes the refresh token, deletes the server-side session, clears the cookie, and redirects to the OIDC end_session endpoint.
+      description: Revokes the refresh token, deletes the server-side session, clears the cookie, and
+        redirects to the OIDC end_session endpoint.
       responses:
-        "302": { description: Redirect to OIDC end_session endpoint }
-
+        '302':
+          description: Redirect to OIDC end_session endpoint
   /bff/userinfo:
     get:
-      tags: [auth]
+      tags:
+      - auth
       summary: Get current session identity
       security:
-        - sessionCookie: []
+      - sessionCookie: []
       responses:
-        "200":
+        '200':
           description: Authenticated user identity and resolved RBAC grants
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  sub: { type: string }
-                  email: { type: string }
-                  name: { type: string }
+                  sub:
+                    type: string
+                  email:
+                    type: string
+                  name:
+                    type: string
                   roles:
                     type: array
-                    items: { type: string }
+                    items:
+                      type: string
                   permissions:
                     type: array
-                    items: { type: string }
+                    items:
+                      type: string
                   resource_permissions:
                     type: array
                     items:
                       type: object
                       properties:
-                        permission: { type: string }
-                        resource_type: { type: string }
-                        resource_id: { type: string }
-        "401": { description: No valid session }
-
+                        permission:
+                          type: string
+                        resource_type:
+                          type: string
+                        resource_id:
+                          type: string
+        '401':
+          description: No valid session
   /bff/system-health:
     get:
-      tags: [system-health]
+      tags:
+      - system-health
       summary: Live status of all upstream services plus manual overrides
       description: Available to any authenticated user, regardless of role.
       security:
-        - sessionCookie: []
+      - sessionCookie: []
       responses:
-        "200":
+        '200':
           description: Per-service live probe result and any manual override
           content:
             application/json:
@@ -142,81 +168,114 @@ paths:
                     items:
                       type: object
                       properties:
-                        name: { type: string, example: forge }
+                        name:
+                          type: string
+                          example: forge
                         live:
                           type: object
                           nullable: true
                           properties:
-                            reachable: { type: boolean }
-                            status_code: { type: integer, nullable: true }
-                            latency_ms: { type: integer, nullable: true }
-                            error: { type: string }
+                            reachable:
+                              type: boolean
+                            status_code:
+                              type: integer
+                              nullable: true
+                            latency_ms:
+                              type: integer
+                              nullable: true
+                            error:
+                              type: string
                         override:
                           type: object
                           nullable: true
                           properties:
-                            service: { type: string }
-                            status: { type: string, enum: [Healthy, Unhealthy, Offline, Maintenance] }
-                            description: { type: string }
-
+                            service:
+                              type: string
+                            status:
+                              type: string
+                              enum:
+                              - Healthy
+                              - Unhealthy
+                              - Offline
+                              - Maintenance
+                            description:
+                              type: string
   /bff/admin/group-roles:
     get:
-      tags: [rbac-admin]
+      tags:
+      - rbac-admin
       summary: List group → role assignments
-      security: [{ sessionCookie: [] }]
+      security:
+      - sessionCookie: []
       responses:
-        "200":
+        '200':
           description: All DB-backed group-role assignments
           content:
             application/json:
               schema:
                 type: array
-                items: { $ref: "#/components/schemas/GroupRoleRow" }
+                items:
+                  $ref: '#/components/schemas/GroupRoleRow'
     post:
-      tags: [rbac-admin]
+      tags:
+      - rbac-admin
       summary: Create a group → role assignment
-      security: [{ sessionCookie: [] }]
+      security:
+      - sessionCookie: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [group, role]
+              required:
+              - group
+              - role
               properties:
-                group: { type: string }
-                role: { type: string }
+                group:
+                  type: string
+                role:
+                  type: string
       responses:
-        "201":
+        '201':
           description: Created
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/GroupRoleRow" }
-        "400": { description: group and role are required }
-        "409": { description: Assignment already exists }
-
+              schema:
+                $ref: '#/components/schemas/GroupRoleRow'
+        '400':
+          description: group and role are required
+        '409':
+          description: Assignment already exists
   /bff/admin/group-roles/{id}:
     delete:
-      tags: [rbac-admin]
+      tags:
+      - rbac-admin
       summary: Delete a group → role assignment
-      security: [{ sessionCookie: [] }]
+      security:
+      - sessionCookie: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
       responses:
-        "204": { description: Deleted }
-        "400": { description: Invalid id }
-        "404": { description: Not found }
-
+        '204':
+          description: Deleted
+        '400':
+          description: Invalid id
+        '404':
+          description: Not found
   /bff/admin/rbac-config:
     get:
-      tags: [rbac-admin]
+      tags:
+      - rbac-admin
       summary: Static roles/groups/permissions lists (for admin UI dropdowns)
-      security: [{ sessionCookie: [] }]
+      security:
+      - sessionCookie: []
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
@@ -225,135 +284,2855 @@ paths:
                 properties:
                   roles:
                     type: array
-                    items: { type: string }
+                    items:
+                      type: string
                   groups:
                     type: array
-                    items: { type: string }
+                    items:
+                      type: string
                   permissions:
                     type: array
-                    items: { type: string }
-
+                    items:
+                      type: string
   /bff/admin/resource-permissions:
     get:
-      tags: [rbac-admin]
+      tags:
+      - rbac-admin
       summary: List resource-scoped permission grants
-      security: [{ sessionCookie: [] }]
+      security:
+      - sessionCookie: []
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
                 type: array
-                items: { $ref: "#/components/schemas/ResourcePermRow" }
+                items:
+                  $ref: '#/components/schemas/ResourcePermRow'
     post:
-      tags: [rbac-admin]
+      tags:
+      - rbac-admin
       summary: Grant a resource-scoped permission
-      security: [{ sessionCookie: [] }]
+      security:
+      - sessionCookie: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [subject_type, subject, permission, resource_type, resource_id]
+              required:
+              - subject_type
+              - subject
+              - permission
+              - resource_type
+              - resource_id
               properties:
-                subject_type: { type: string, enum: [user, group, role] }
-                subject: { type: string }
-                permission: { type: string }
-                resource_type: { type: string }
-                resource_id: { type: string }
+                subject_type:
+                  type: string
+                  enum:
+                  - user
+                  - group
+                  - role
+                subject:
+                  type: string
+                permission:
+                  type: string
+                resource_type:
+                  type: string
+                resource_id:
+                  type: string
       responses:
-        "201":
+        '201':
           description: Created
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ResourcePermRow" }
-        "400": { description: All fields are required, or invalid subject_type }
-        "409": { description: Grant already exists }
-
+              schema:
+                $ref: '#/components/schemas/ResourcePermRow'
+        '400':
+          description: All fields are required
+          or invalid subject_type: null
+        '409':
+          description: Grant already exists
   /bff/admin/resource-permissions/{id}:
     delete:
-      tags: [rbac-admin]
+      tags:
+      - rbac-admin
       summary: Revoke a resource-scoped permission grant
-      security: [{ sessionCookie: [] }]
+      security:
+      - sessionCookie: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
       responses:
-        "204": { description: Deleted }
-        "400": { description: Invalid id }
-        "404": { description: Not found }
-
+        '204':
+          description: Deleted
+        '400':
+          description: Invalid id
+        '404':
+          description: Not found
   /bff/admin/service-status:
     get:
-      tags: [system-health]
+      tags:
+      - system-health
       summary: List manual service status overrides
-      security: [{ sessionCookie: [] }]
+      security:
+      - sessionCookie: []
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
                 type: array
-                items: { $ref: "#/components/schemas/ServiceStatusRow" }
-        "503": { description: Database not configured }
-
+                items:
+                  $ref: '#/components/schemas/ServiceStatusRow'
+        '503':
+          description: Database not configured
   /bff/admin/service-status/{service}:
     put:
-      tags: [system-health]
+      tags:
+      - system-health
       summary: Create or update a manual service status override
-      security: [{ sessionCookie: [] }]
+      security:
+      - sessionCookie: []
       parameters:
-        - in: path
-          name: service
-          required: true
-          schema: { type: string, enum: [forge, index, weave, spectra, content] }
+      - in: path
+        name: service
+        required: true
+        schema:
+          type: string
+          enum:
+          - forge
+          - index
+          - weave
+          - spectra
+          - content
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [status]
+              required:
+              - status
               properties:
-                status: { type: string, enum: [Healthy, Unhealthy, Offline, Maintenance] }
-                description: { type: string }
+                status:
+                  type: string
+                  enum:
+                  - Healthy
+                  - Unhealthy
+                  - Offline
+                  - Maintenance
+                description:
+                  type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ServiceStatusRow" }
-        "400": { description: Unknown service, or invalid status }
-        "503": { description: Database not configured }
+              schema:
+                $ref: '#/components/schemas/ServiceStatusRow'
+        '400':
+          description: Unknown service
+          or invalid status: null
+        '503':
+          description: Database not configured
     delete:
-      tags: [system-health]
+      tags:
+      - system-health
       summary: Remove a manual service status override
-      security: [{ sessionCookie: [] }]
+      security:
+      - sessionCookie: []
       parameters:
-        - in: path
-          name: service
-          required: true
-          schema: { type: string, enum: [forge, index, weave, spectra, content] }
+      - in: path
+        name: service
+        required: true
+        schema:
+          type: string
+          enum:
+          - forge
+          - index
+          - weave
+          - spectra
+          - content
       responses:
-        "204": { description: Deleted }
-        "400": { description: Unknown service }
-        "404": { description: Not found }
-        "503": { description: Database not configured }
-
+        '204':
+          description: Deleted
+        '400':
+          description: Unknown service
+        '404':
+          description: Not found
+        '503':
+          description: Database not configured
+  /api/forge/api/v1/venvs:
+    get:
+      tags:
+      - forge
+      summary: List requirements-based venv builds
+      x-required-permission: forge:builds:read
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 0
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          default: 20
+          maximum: 100
+      - name: status
+        in: query
+        schema:
+          type: string
+      - name: name
+        in: query
+        schema:
+          type: string
+      - name: creatorId
+        in: query
+        schema:
+          type: string
+      - name: sortBy
+        in: query
+        schema:
+          type: string
+          default: createdAt
+      - name: sortDir
+        in: query
+        schema:
+          type: string
+          default: desc
+      responses:
+        '200':
+          description: Paginated venv build list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgePageResponse'
+    post:
+      tags:
+      - forge
+      summary: Create a venv build from an uploaded requirements.txt
+      x-required-permission: forge:builds:create
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateVenvRequest'
+      responses:
+        '202':
+          description: Build accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeBuildResponse'
+        '400':
+          description: |
+            Bind error, missing/empty/oversized (>100KB) requirements file, unsupported python_version, or lint-rule validation failure (body is ForgeValidationResponse in this one case, not ForgeError)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/ForgeError'
+                - $ref: '#/components/schemas/ForgeValidationResponse'
+        '409':
+          $ref: '#/components/responses/ForgeConflict'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/forge/api/v1/venvs/validate:
+    post:
+      tags:
+      - forge
+      summary: Validate a requirements.txt without creating a build
+      x-required-permission: forge:builds:create
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateVenvRequest'
+      responses:
+        '200':
+          description: Valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeValidationResponse'
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '422':
+          description: Requirements.txt fails lint rules
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeValidationResponse'
+  /api/forge/api/v1/venvs/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - forge
+      summary: Get a venv build by id
+      x-required-permission: forge:builds:read
+      responses:
+        '200':
+          description: Venv build found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeBuildResponse'
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '404':
+          $ref: '#/components/responses/ForgeNotFound'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/forge/api/v1/venvs/{id}/logs:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - forge
+      summary: Fetch build pod logs
+      x-required-permission: forge:builds:read
+      responses:
+        '200':
+          description: Raw pod log text
+          content:
+            text/plain:
+              schema:
+                type: string
+        '204':
+          description: Build exists but no log content yet
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '404':
+          description: |
+            Build not found, no CIBuild recorded, CIBuild CR missing, or build pod not yet created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeError'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/forge/api/v1/gitbuilds:
+    get:
+      tags:
+      - forge
+      summary: List git-source builds
+      x-required-permission: forge:builds:read
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 0
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          default: 20
+          maximum: 100
+      - name: status
+        in: query
+        schema:
+          type: string
+      - name: name
+        in: query
+        schema:
+          type: string
+      - name: creatorId
+        in: query
+        schema:
+          type: string
+      - name: sortBy
+        in: query
+        schema:
+          type: string
+          default: createdAt
+      - name: sortDir
+        in: query
+        schema:
+          type: string
+          default: desc
+      responses:
+        '200':
+          description: Paginated git build list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgePageResponse'
+    post:
+      tags:
+      - forge
+      summary: Trigger a build from a git repository
+      description: |
+        name/version are required unless metadata_source resolves them from the repo's pyproject.toml (metadata_source=version resolves version only; =full resolves both).
+      x-required-permission: forge:builds:create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGitBuildRequest'
+      responses:
+        '202':
+          description: Build accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeBuildResponse'
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '409':
+          $ref: '#/components/responses/ForgeConflict'
+        '422':
+          description: pyproject.toml metadata resolution failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeError'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/forge/api/v1/gitbuilds/validate:
+    post:
+      tags:
+      - forge
+      summary: Dry-run validate a git build (conflict + metadata checks)
+      x-required-permission: forge:builds:create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGitBuildRequest'
+      responses:
+        '200':
+          description: Valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeValidationResponse'
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '422':
+          description: |
+            Violations found, or a single synthetic violation when the pyproject.toml fetch itself failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeValidationResponse'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/forge/api/v1/gitbuilds/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - forge
+      summary: Get a git build by id
+      x-required-permission: forge:builds:read
+      responses:
+        '200':
+          description: Git build found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeBuildResponse'
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '404':
+          $ref: '#/components/responses/ForgeNotFound'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/forge/api/v1/gitbuilds/{id}/logs:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - forge
+      summary: Fetch git build pod logs
+      x-required-permission: forge:builds:read
+      responses:
+        '200':
+          description: Raw pod log text
+          content:
+            text/plain:
+              schema:
+                type: string
+        '204':
+          description: Build exists but no log content yet
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '404':
+          $ref: '#/components/responses/ForgeNotFound'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/forge/api/v1/appbuilds:
+    get:
+      tags:
+      - forge
+      summary: List app builds
+      x-required-permission: forge:builds:read
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 0
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          default: 20
+          maximum: 100
+      - name: status
+        in: query
+        schema:
+          type: string
+      - name: name
+        in: query
+        schema:
+          type: string
+      - name: creatorId
+        in: query
+        schema:
+          type: string
+      - name: sortBy
+        in: query
+        schema:
+          type: string
+          default: createdAt
+      - name: sortDir
+        in: query
+        schema:
+          type: string
+          default: desc
+      responses:
+        '200':
+          description: Paginated app build list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgePageResponse'
+    post:
+      tags:
+      - forge
+      summary: Trigger an app build from a git repository
+      description: |
+        name, version, builderImage, and runner are read server-side from the repo's metadata.yaml, not supplied by the caller.
+      x-required-permission: forge:builds:create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppBuildRequest'
+      responses:
+        '202':
+          description: Build accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeBuildResponse'
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '409':
+          $ref: '#/components/responses/ForgeConflict'
+        '422':
+          description: metadata.yaml fetch/parse failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeError'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/forge/api/v1/appbuilds/validate:
+    post:
+      tags:
+      - forge
+      summary: Dry-run validate an app build
+      x-required-permission: forge:builds:create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppBuildRequest'
+      responses:
+        '200':
+          description: Valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeValidationResponse'
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '422':
+          description: |
+            Violations found, or a single synthetic violation when metadata.yaml fetch failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeValidationResponse'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/forge/api/v1/appbuilds/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - forge
+      summary: Get an app build by id
+      x-required-permission: forge:builds:read
+      responses:
+        '200':
+          description: App build found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeBuildResponse'
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '404':
+          $ref: '#/components/responses/ForgeNotFound'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/forge/api/v1/appbuilds/{id}/logs:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - forge
+      summary: Fetch app build pod logs
+      x-required-permission: forge:builds:read
+      responses:
+        '200':
+          description: Raw pod log text
+          content:
+            text/plain:
+              schema:
+                type: string
+        '204':
+          description: Build exists but no log content yet
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '404':
+          $ref: '#/components/responses/ForgeNotFound'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/forge/api/v1/builds:
+    delete:
+      tags:
+      - forge
+      summary: Bulk-delete builds matching status/age/type filters
+      x-required-permission: forge:builds:delete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkDeleteBuildsRequest'
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeBulkDeleteResponse'
+        '400':
+          description: older_than is zero/missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeError'
+        '422':
+          description: unknown status or build_type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeError'
+  /api/forge/api/v1/builds/zombie-cleanup:
+    post:
+      tags:
+      - forge
+      summary: Delete stuck/zombie builds older than a cutoff
+      x-required-permission: forge:admin:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZombieCleanupRequest'
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeBulkDeleteResponse'
+        '400':
+          description: older_than is zero/missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeError'
+        '422':
+          description: unknown build_type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeError'
+  /api/forge/api/v1/gitwatchers:
+    get:
+      tags:
+      - forge
+      summary: List GitWatchers
+      x-required-permission: forge:builds:read
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 0
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          default: 20
+          maximum: 100
+      responses:
+        '200':
+          description: Paginated GitWatcher list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitWatcherPageResponse'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+    post:
+      tags:
+      - forge
+      summary: Create a GitWatcher
+      description: |
+        Performs a live reachability check (fetches the remote HEAD) before creating the GitWatcher custom resource.
+      x-required-permission: forge:gitwatchers:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGitWatcherRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitWatcherResponse'
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '409':
+          description: GitWatcher with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeError'
+        '422':
+          description: Repo not reachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeError'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/forge/api/v1/gitwatchers/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 253
+    get:
+      tags:
+      - forge
+      summary: Get a GitWatcher by name
+      x-required-permission: forge:builds:read
+      responses:
+        '200':
+          description: GitWatcher found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitWatcherResponse'
+        '404':
+          $ref: '#/components/responses/ForgeNotFound'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+    put:
+      tags:
+      - forge
+      summary: Replace a GitWatcher's spec
+      description: |
+        Re-checks repo reachability only if repo_url/repo_ref changed from the stored spec.
+      x-required-permission: forge:gitwatchers:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGitWatcherRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitWatcherResponse'
+        '400':
+          $ref: '#/components/responses/ForgeBadRequest'
+        '404':
+          $ref: '#/components/responses/ForgeNotFound'
+        '409':
+          description: Resource version conflict — retry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeError'
+        '422':
+          description: Repo not reachable (only when repo coordinates changed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgeError'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+    delete:
+      tags:
+      - forge
+      summary: Delete a GitWatcher
+      x-required-permission: forge:gitwatchers:delete
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/ForgeNotFound'
+        '500':
+          $ref: '#/components/responses/ForgeInternalError'
+  /api/index/api/v1/artifacts:
+    get:
+      tags:
+      - index
+      summary: List artifacts
+      description: |
+        Filter precedence: type > name > tag. `type` is repeatable for OR semantics.
+      x-required-permission: index:artifacts:read
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 20
+      - name: name
+        in: query
+        schema:
+          type: string
+        description: Filter by full name prefix
+      - name: tag
+        in: query
+        schema:
+          type: string
+      - name: type
+        in: query
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: string
+      responses:
+        '200':
+          description: Paginated artifact list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexArtifactPage'
+    post:
+      tags:
+      - index
+      summary: Create artifact
+      x-required-permission: index:artifacts:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexCreateArtifactRequest'
+      responses:
+        '201':
+          description: Artifact created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexArtifactResponse'
+        '400':
+          $ref: '#/components/responses/IndexBadRequest'
+        '409':
+          description: An artifact with this full name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/artifacts/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - index
+      summary: Get artifact
+      x-required-permission: index:artifacts:read
+      responses:
+        '200':
+          description: Artifact found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexArtifactResponse'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+    put:
+      tags:
+      - index
+      summary: Update artifact description
+      x-required-permission: index:artifacts:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexUpdateArtifactRequest'
+      responses:
+        '200':
+          description: Artifact updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexArtifactResponse'
+        '400':
+          $ref: '#/components/responses/IndexBadRequest'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+    delete:
+      tags:
+      - index
+      summary: Delete artifact
+      description: Deletes the artifact and all its versions, files, and tags (cascade).
+      x-required-permission: index:artifacts:delete
+      x-resource-type: artifact
+      responses:
+        '204':
+          description: Artifact deleted
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+  /api/index/api/v1/artifacts/{id}/versions:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - index
+      summary: List versions
+      description: Ordered newest first (major, minor, patch DESC).
+      x-required-permission: index:artifacts:read
+      responses:
+        '200':
+          description: Version list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IndexVersionResponse'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+    post:
+      tags:
+      - index
+      summary: Create version
+      description: |
+        Tags listed in tags[] are atomically assigned to this version (upsert — a tag previously on another version moves here).
+      x-required-permission: index:versions:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexCreateVersionRequest'
+      responses:
+        '201':
+          description: Version created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexVersionResponse'
+        '400':
+          $ref: '#/components/responses/IndexBadRequest'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+        '409':
+          description: Version already exists for this artifact
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/artifacts/{id}/versions/{semver}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: semver
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^\d+\.\d+\.\d+$
+    get:
+      tags:
+      - index
+      summary: Get version
+      x-required-permission: index:artifacts:read
+      responses:
+        '200':
+          description: Version found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexVersionResponse'
+        '400':
+          $ref: '#/components/responses/IndexBadRequest'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+    delete:
+      tags:
+      - index
+      summary: Delete version
+      description: Deletes the version and performs best-effort cleanup of its storage objects.
+      x-required-permission: index:versions:delete
+      x-resource-type: artifact
+      responses:
+        '204':
+          description: Version deleted
+        '400':
+          $ref: '#/components/responses/IndexBadRequest'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+  /api/index/api/v1/artifacts/{id}/tags/{tag}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: tag
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 255
+    put:
+      tags:
+      - index
+      summary: Assign tag to a version
+      description: Atomically assigns the tag to the specified version; moves it if previously assigned
+        elsewhere.
+      x-required-permission: index:artifacts:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexAssignTagRequest'
+      responses:
+        '200':
+          description: Tag assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexTagResponse'
+        '400':
+          $ref: '#/components/responses/IndexBadRequest'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+    delete:
+      tags:
+      - index
+      summary: Delete tag
+      x-required-permission: index:artifacts:write
+      responses:
+        '204':
+          description: Tag deleted
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+  /api/index/api/v1/artifacts/{id}/versions/{semver}/files:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: semver
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^\d+\.\d+\.\d+$
+    get:
+      tags:
+      - index
+      summary: List files
+      x-required-permission: index:artifacts:read
+      responses:
+        '200':
+          description: File list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IndexFileResponse'
+        '400':
+          $ref: '#/components/responses/IndexBadRequest'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+    post:
+      tags:
+      - index
+      summary: Upload file
+      description: multipart/form-data with a `file` field; name must be unique within the version.
+      x-required-permission: index:versions:write
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexFileResponse'
+        '400':
+          $ref: '#/components/responses/IndexBadRequest'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+        '409':
+          description: A file with this name already exists for this version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/artifacts/{id}/versions/{semver}/files/{fileId}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: semver
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^\d+\.\d+\.\d+$
+    - name: fileId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - index
+      summary: Get file metadata
+      x-required-permission: index:artifacts:read
+      responses:
+        '200':
+          description: File metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexFileResponse'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+    delete:
+      tags:
+      - index
+      summary: Delete file
+      description: |
+        RBAC note: matches the versions/*/… rule ahead of the artifacts/* rule (trailing wildcard absorbs the remaining path segments), so this actually requires index:versions:delete, not index:artifacts:delete — verified via MatchRoute.
+      x-required-permission: index:versions:delete
+      x-resource-type: artifact
+      responses:
+        '204':
+          description: File deleted
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+  /api/index/api/v1/artifacts/{id}/versions/{semver}/files/{fileId}/download:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: semver
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^\d+\.\d+\.\d+$
+    - name: fileId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - index
+      summary: Download file
+      description: Streams the file content with a Content-Disposition header for save-as.
+      x-required-permission: index:artifacts:read
+      responses:
+        '200':
+          description: File stream
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              example: attachment; filename="model.onnx"
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+  /api/index/api/v1/types:
+    get:
+      tags:
+      - index
+      summary: List types
+      x-required-permission: index:types:manage
+      responses:
+        '200':
+          description: Type list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IndexTypeResponse'
+    post:
+      tags:
+      - index
+      summary: Create type
+      x-required-permission: index:types:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexCreateTypeRequest'
+      responses:
+        '201':
+          description: Type created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexTypeResponse'
+        '400':
+          $ref: '#/components/responses/IndexBadRequest'
+        '409':
+          description: A type with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/types/{typeId}:
+    parameters:
+    - name: typeId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - index
+      summary: Get type
+      x-required-permission: index:types:manage
+      responses:
+        '200':
+          description: Type found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexTypeResponse'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+    put:
+      tags:
+      - index
+      summary: Update type
+      x-required-permission: index:types:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexUpdateTypeRequest'
+      responses:
+        '200':
+          description: Type updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexTypeResponse'
+        '400':
+          $ref: '#/components/responses/IndexBadRequest'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+        '409':
+          description: A type with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+    delete:
+      tags:
+      - index
+      summary: Delete type
+      description: Removes the type and all its artifact assignments (cascade).
+      x-required-permission: index:types:manage
+      responses:
+        '204':
+          description: Type deleted
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+  /api/index/api/v1/artifacts/{id}/types:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - index
+      summary: List artifact types
+      x-required-permission: index:artifacts:read
+      responses:
+        '200':
+          description: Type list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IndexTypeResponse'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+  /api/index/api/v1/artifacts/{id}/types/{typeId}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    - name: typeId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    put:
+      tags:
+      - index
+      summary: Assign type to artifact
+      description: Idempotent — assigning an already-assigned type returns 200 without error.
+      x-required-permission: index:artifacts:write
+      responses:
+        '200':
+          description: Type assigned (returns the type)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexTypeResponse'
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+    delete:
+      tags:
+      - index
+      summary: Remove type from artifact
+      description: |
+        RBAC note: unexpectedly matches the DELETE .../artifacts/* rule (trailing wildcard absorbs "types/{typeId}"), so this requires index:artifacts:delete — the same permission as deleting the whole artifact — verified via MatchRoute. Likely an unintended coupling worth a follow-up rbac.yaml decision.
+      x-required-permission: index:artifacts:delete
+      x-resource-type: artifact
+      responses:
+        '204':
+          description: Type removed
+        '404':
+          $ref: '#/components/responses/IndexNotFound'
+  /api/index/q/metrics:
+    get:
+      tags:
+      - index
+      summary: Prometheus metrics
+      x-required-permission: index:metrics:read
+      responses:
+        '200':
+          description: Prometheus text-format metrics
+  /api/weave/api/v1/jobtemplates:
+    get:
+      tags:
+      - weave
+      summary: List WeaveJobTemplates
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveJobTemplateList'
+    post:
+      tags:
+      - weave
+      summary: Create a WeaveJobTemplate
+      x-required-permission: weave:jobtemplates:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveJobTemplate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveJobTemplate'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '409':
+          $ref: '#/components/responses/WeaveConflict'
+  /api/weave/api/v1/jobtemplates/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave
+      summary: Get a WeaveJobTemplate
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveJobTemplate'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    put:
+      tags:
+      - weave
+      summary: Replace a WeaveJobTemplate
+      description: Full-object replace via client.Update — body must include metadata.resourceVersion
+        for optimistic concurrency.
+      x-required-permission: weave:jobtemplates:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveJobTemplate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveJobTemplate'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    patch:
+      tags:
+      - weave
+      summary: Partially update a WeaveJobTemplate
+      description: JSON Merge Patch (RFC 7396) applied directly to the live Kubernetes object.
+      x-required-permission: weave:jobtemplates:write
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Patched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveJobTemplate'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    delete:
+      tags:
+      - weave
+      summary: Delete a WeaveJobTemplate
+      x-required-permission: weave:jobtemplates:delete
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+  /api/weave/api/v1/servicetemplates:
+    get:
+      tags:
+      - weave
+      summary: List WeaveServiceTemplates
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveServiceTemplateList'
+    post:
+      tags:
+      - weave
+      summary: Create a WeaveServiceTemplate
+      x-required-permission: weave:servicetemplates:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveServiceTemplate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveServiceTemplate'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '409':
+          $ref: '#/components/responses/WeaveConflict'
+  /api/weave/api/v1/servicetemplates/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave
+      summary: Get a WeaveServiceTemplate
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveServiceTemplate'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    put:
+      tags:
+      - weave
+      summary: Replace a WeaveServiceTemplate
+      x-required-permission: weave:servicetemplates:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveServiceTemplate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveServiceTemplate'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    patch:
+      tags:
+      - weave
+      summary: Partially update a WeaveServiceTemplate
+      description: JSON Merge Patch (RFC 7396) applied directly to the live Kubernetes object.
+      x-required-permission: weave:servicetemplates:write
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Patched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveServiceTemplate'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    delete:
+      tags:
+      - weave
+      summary: Delete a WeaveServiceTemplate
+      x-required-permission: weave:servicetemplates:delete
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+  /api/weave/api/v1/chains:
+    get:
+      tags:
+      - weave
+      summary: List WeaveChains
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveChainList'
+    post:
+      tags:
+      - weave
+      summary: Create a WeaveChain
+      x-required-permission: weave:chains:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveChain'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveChain'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '409':
+          $ref: '#/components/responses/WeaveConflict'
+  /api/weave/api/v1/chains/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave
+      summary: Get a WeaveChain
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveChain'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    put:
+      tags:
+      - weave
+      summary: Replace a WeaveChain
+      x-required-permission: weave:chains:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveChain'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveChain'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    patch:
+      tags:
+      - weave
+      summary: Partially update a WeaveChain
+      description: JSON Merge Patch (RFC 7396) applied directly to the live Kubernetes object.
+      x-required-permission: weave:chains:write
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Patched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveChain'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    delete:
+      tags:
+      - weave
+      summary: Delete a WeaveChain
+      x-required-permission: weave:chains:delete
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+  /api/weave/api/v1/triggers:
+    get:
+      tags:
+      - weave
+      summary: List WeaveTriggers (all types)
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTriggerList'
+    post:
+      tags:
+      - weave
+      summary: Create a WeaveTrigger
+      description: |
+        Generic CRUD for any trigger type (OnDemand, Cron, Webhook, BatchCron, Kafka). BatchCron and Kafka triggers are more commonly managed via the dedicated /batchtriggers and /kafkatriggers endpoints below, which offer purpose-built DTOs.
+      x-required-permission: weave:triggers:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveTrigger'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '409':
+          $ref: '#/components/responses/WeaveConflict'
+  /api/weave/api/v1/triggers/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave
+      summary: Get a WeaveTrigger
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    put:
+      tags:
+      - weave
+      summary: Replace a WeaveTrigger
+      x-required-permission: weave:triggers:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveTrigger'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    patch:
+      tags:
+      - weave
+      summary: Partially update a WeaveTrigger
+      description: JSON Merge Patch (RFC 7396) applied directly to the live Kubernetes object.
+      x-required-permission: weave:triggers:write
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Patched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    delete:
+      tags:
+      - weave
+      summary: Delete a WeaveTrigger
+      x-required-permission: weave:triggers:delete
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+  /api/weave/api/v1/batchtriggers:
+    get:
+      tags:
+      - weave
+      summary: List BatchCron-type triggers
+      description: Filters the full WeaveTrigger list to spec.type == BatchCron.
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTriggerList'
+    post:
+      tags:
+      - weave
+      summary: Create a BatchCron trigger + backing jobs ConfigMap
+      x-required-permission: weave:batchtriggers:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveBatchTriggerRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '409':
+          $ref: '#/components/responses/WeaveConflict'
+        '422':
+          description: Jobs YAML failed validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveBatchValidateResponse'
+  /api/weave/api/v1/batchtriggers/validate:
+    post:
+      tags:
+      - weave
+      summary: Validate a BatchCron jobs YAML document without touching Kubernetes
+      x-required-permission: weave:batchtriggers:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - jobs
+              properties:
+                jobs:
+                  type: string
+                  description: Raw jobs YAML
+      responses:
+        '200':
+          description: Always 200, whether valid or not — check the `valid` field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveBatchValidateResponse'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+  /api/weave/api/v1/batchtriggers/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave
+      summary: Get a BatchCron trigger
+      description: Returns the raw WeaveTrigger object — the jobs YAML is not inlined.
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    put:
+      tags:
+      - weave
+      summary: Replace the jobs YAML in a BatchCron trigger's ConfigMap
+      description: Only the backing ConfigMap is replaced; other trigger spec fields are untouched.
+      x-required-permission: weave:batchtriggers:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - jobs
+              properties:
+                jobs:
+                  type: string
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+        '422':
+          description: Jobs YAML failed validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveBatchValidateResponse'
+    patch:
+      tags:
+      - weave
+      summary: Partially update a BatchCron trigger
+      description: JSON Merge Patch on the WeaveTrigger object only; the jobs ConfigMap is untouched.
+      x-required-permission: weave:batchtriggers:write
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Patched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    delete:
+      tags:
+      - weave
+      summary: Delete a BatchCron trigger
+      description: The backing ConfigMap is cascade-deleted via its owner reference.
+      x-required-permission: weave:batchtriggers:delete
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+  /api/weave/api/v1/batchtriggers/{name}/stop:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      tags:
+      - weave
+      summary: Pause a BatchCron trigger
+      description: Sets spec.paused=true.
+      x-required-permission: weave:batchtriggers:write
+      responses:
+        '200':
+          description: Paused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+        '409':
+          description: Trigger is already paused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveError'
+  /api/weave/api/v1/batchtriggers/{name}/resume:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      tags:
+      - weave
+      summary: Resume a BatchCron trigger with a new jobs YAML
+      description: Uploads new jobs YAML and sets spec.paused=false.
+      x-required-permission: weave:batchtriggers:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - jobs
+              properties:
+                jobs:
+                  type: string
+      responses:
+        '200':
+          description: Resumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+        '422':
+          description: Jobs YAML failed validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveBatchValidateResponse'
+  /api/weave/api/v1/kafkatriggers:
+    get:
+      tags:
+      - weave
+      summary: List Kafka-type triggers
+      description: Filters the full WeaveTrigger list to spec.type == Kafka.
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTriggerList'
+    post:
+      tags:
+      - weave
+      summary: Create a Kafka trigger
+      x-required-permission: weave:kafkatriggers:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveKafkaTriggerRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '409':
+          $ref: '#/components/responses/WeaveConflict'
+  /api/weave/api/v1/kafkatriggers/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave
+      summary: Get a Kafka trigger
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    put:
+      tags:
+      - weave
+      summary: Replace a Kafka trigger's kafka config
+      description: Only spec.kafka is replaced (via a merge patch under the hood), not a full-object PUT
+        despite the verb.
+      x-required-permission: weave:kafkatriggers:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveKafkaTriggerRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    patch:
+      tags:
+      - weave
+      summary: Partially update a Kafka trigger
+      description: JSON Merge Patch (RFC 7396) applied to the whole WeaveTrigger object.
+      x-required-permission: weave:kafkatriggers:write
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Patched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveTrigger'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    delete:
+      tags:
+      - weave
+      summary: Delete a Kafka trigger
+      x-required-permission: weave:kafkatriggers:delete
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+  /api/weave/api/v1/runs:
+    get:
+      tags:
+      - weave
+      summary: List WeaveRuns
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveRunList'
+    post:
+      tags:
+      - weave
+      summary: Create a WeaveRun
+      x-required-permission: weave:runs:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveRun'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveRun'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '409':
+          $ref: '#/components/responses/WeaveConflict'
+  /api/weave/api/v1/runs/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave
+      summary: Get a WeaveRun
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveRun'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    put:
+      tags:
+      - weave
+      summary: Replace a WeaveRun
+      description: Full-object replace via client.Update — body must include metadata.resourceVersion for optimistic concurrency.
+      x-required-permission: weave:runs:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveRun'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveRun'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    patch:
+      tags:
+      - weave
+      summary: Partially update a WeaveRun
+      description: |
+        JSON Merge Patch (RFC 7396) applied directly to the live Kubernetes object. weave:steps:restart is the permission name (historical) — it covers any write that changes run phase, including this endpoint and the /stop action below.
+      x-required-permission: weave:steps:restart
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Patched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveRun'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    delete:
+      tags:
+      - weave
+      summary: Delete a WeaveRun
+      x-required-permission: weave:runs:delete
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+  /api/weave/api/v1/runs/{name}/stop:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      tags:
+      - weave
+      summary: Stop a running WeaveRun
+      description: |
+        Patches status.phase=Stopped via the status subresource, triggering the deploy-cleanup finalizer for any Deploy-kind steps.
+      x-required-permission: weave:steps:restart
+      responses:
+        '200':
+          description: Stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveRun'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+        '409':
+          description: Run is already in a terminal phase (Succeeded/Failed/Stopped)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveError'
+  /api/weave/monitor/v1/runs:
+    get:
+      tags:
+      - weave-monitoring
+      summary: List run summaries
+      description: Response is server-side TTL-cached. Also refreshes Prometheus gauges as a side effect.
+      x-required-permission: weave:monitoring:read
+      responses:
+        '200':
+          description: Run summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WeaveMonitorRunSummary'
+  /api/weave/monitor/v1/runs/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave-monitoring
+      summary: Run detail — run object, its Jobs, and its Events
+      x-required-permission: weave:monitoring:read
+      responses:
+        '200':
+          description: Run detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveMonitorRunDetail'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+  /api/weave/monitor/v1/runs/{name}/jobs:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave-monitoring
+      summary: List batch Jobs for a run
+      x-required-permission: weave:monitoring:read
+      responses:
+        '200':
+          description: Jobs for this run (label fusion-platform.io/run=<name>)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/K8sJob'
+  /api/weave/monitor/v1/runs/{name}/jobs/{jobName}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: jobName
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave-monitoring
+      summary: Get one batch Job for a run
+      x-required-permission: weave:monitoring:read
+      responses:
+        '200':
+          description: Job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/K8sJob'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+  /api/weave/monitor/v1/runs/{name}/steps/{step}/logs:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: step
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave-monitoring
+      summary: Tail log snapshot for a step's pod
+      description: |
+        Resolves the step's job or deployment pod (preferring Running, then newest); tail length is server-configured (default 100 lines); 10s timeout, 4MiB read cap.
+      x-required-permission: weave:monitoring:read
+      responses:
+        '200':
+          description: Log snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveMonitorLogResponse'
+        '404':
+          description: Run not found, step not found / has no associated job, or no pods found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveError'
+  /api/weave/monitor/v1/runs/{name}/events:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave-monitoring
+      summary: List Kubernetes Events for a WeaveRun
+      x-required-permission: weave:monitoring:read
+      responses:
+        '200':
+          description: Events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/K8sEvent'
+  /api/weave/monitor/v1/chains/{name}/deployments:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave-monitoring
+      summary: List Deployments for a chain
+      description: Label fusion-platform.io/chain=<name>.
+      x-required-permission: weave:monitoring:read
+      responses:
+        '200':
+          description: Deployments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/K8sDeployment'
+  /api/weave/monitor/v1/stats/runs:
+    get:
+      tags:
+      - weave-monitoring
+      summary: Aggregated run stats across all chains
+      x-required-permission: weave:monitoring:read
+      parameters:
+      - name: window
+        in: query
+        schema:
+          type: string
+          default: 1h
+        description: Go duration string or "<N>d"; invalid values silently fall back to 1h
+      responses:
+        '200':
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveMonitorRunStats'
+  /api/weave/monitor/v1/stats/chains/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave-monitoring
+      summary: Aggregated run stats scoped to one chain
+      x-required-permission: weave:monitoring:read
+      parameters:
+      - name: window
+        in: query
+        schema:
+          type: string
+          default: 1h
+      responses:
+        '200':
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveMonitorRunStats'
+  /api/weave/monitor/v1/events:
+    get:
+      tags:
+      - weave-monitoring
+      summary: List all Kubernetes Events in the namespace
+      x-required-permission: weave:monitoring:read
+      parameters:
+      - name: fieldSelector
+        in: query
+        schema:
+          type: string
+          pattern: ^[a-zA-Z0-9./=!,_()\- ]{0,512}$
+      responses:
+        '200':
+          description: Events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/K8sEvent'
+        '400':
+          description: fieldSelector fails validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveError'
+  /api/content/api/v1/changelog:
+    get:
+      tags:
+      - content
+      summary: List merged changelog entries across projects
+      x-required-permission: content:changelog:read
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          default: 20
+          maximum: 100
+      - name: project
+        in: query
+        schema:
+          type: string
+        description: Exact-match project name filter
+      - name: date
+        in: query
+        schema:
+          type: string
+        description: ISO YYYY-MM-DD, or the literal "unreleased"
+      responses:
+        '200':
+          description: |
+            Paginated changelog date-groups. Invalid page/pageSize silently fall back to defaults; an unmatched project/date filter yields an empty data array (not an error).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangelogResponse'
+  /api/content/api/v1/help:
+    get:
+      tags:
+      - content
+      summary: List/search help article summaries
+      x-required-permission: content:help:read
+      parameters:
+      - name: service
+        in: query
+        schema:
+          type: string
+      - name: type
+        in: query
+        schema:
+          type: string
+          enum:
+          - tutorial
+          - how-to
+          - reference
+          - explanation
+      - name: tag
+        in: query
+        schema:
+          type: string
+      - name: route
+        in: query
+        schema:
+          type: string
+        description: Frontend route path filter
+      - name: q
+        in: query
+        schema:
+          type: string
+        description: Full-text search (AND over tokenized title+summary+body+tags)
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          default: 20
+          maximum: 100
+      responses:
+        '200':
+          description: Paginated help article summaries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HelpListResponse'
+  /api/content/api/v1/help/{service}/{type}/{slug}:
+    parameters:
+    - name: service
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: type
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+        - tutorial
+        - how-to
+        - reference
+        - explanation
+    - name: slug
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - content
+      summary: Get a single help article, including full body
+      x-required-permission: content:help:read
+      responses:
+        '200':
+          description: Article found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArticleResponse'
+        '404':
+          description: Article not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentError'
+  /api/content/api/v1/videos:
+    get:
+      tags:
+      - content
+      summary: List video metadata
+      x-required-permission: content:videos:read
+      parameters:
+      - name: service
+        in: query
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          default: 20
+          maximum: 100
+      responses:
+        '200':
+          description: Paginated video list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoListResponse'
+  /api/content/api/v1/videos/{service}/{slug}:
+    parameters:
+    - name: service
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: slug
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - content
+      summary: Get a single video's metadata
+      x-required-permission: content:videos:read
+      responses:
+        '200':
+          description: Video found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoResponse'
+        '404':
+          description: Video not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentError'
   /api/forge/{path}:
-    $ref: "#/components/pathItems/proxy"
+    $ref: '#/components/pathItems/proxy'
   /api/index/{path}:
-    $ref: "#/components/pathItems/proxy"
+    $ref: '#/components/pathItems/proxy'
   /api/weave/{path}:
-    $ref: "#/components/pathItems/proxy"
+    $ref: '#/components/pathItems/proxy'
   /api/content/{path}:
-    $ref: "#/components/pathItems/proxy"
-
+    $ref: '#/components/pathItems/proxy'
 components:
   securitySchemes:
     sessionCookie:
@@ -366,81 +3145,1929 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: OIDC access token, accepted as a fallback when no session cookie is present
-
   schemas:
     GroupRoleRow:
       type: object
       properties:
-        id: { type: integer }
-        group: { type: string }
-        role: { type: string }
-        created_by: { type: string }
-        created_at: { type: string, format: date-time }
+        id:
+          type: integer
+        group:
+          type: string
+        role:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
     ResourcePermRow:
       type: object
       properties:
-        id: { type: integer }
-        subject_type: { type: string, enum: [user, group, role] }
-        subject: { type: string }
-        permission: { type: string }
-        resource_type: { type: string }
-        resource_id: { type: string }
-        created_by: { type: string }
-        created_at: { type: string, format: date-time }
+        id:
+          type: integer
+        subject_type:
+          type: string
+          enum:
+          - user
+          - group
+          - role
+        subject:
+          type: string
+        permission:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
     ServiceStatusRow:
       type: object
       properties:
-        service: { type: string }
-        status: { type: string, enum: [Healthy, Unhealthy, Offline, Maintenance] }
-        description: { type: string }
-        updated_by: { type: string }
-        updated_at: { type: string, format: date-time }
-
+        service:
+          type: string
+        status:
+          type: string
+          enum:
+          - Healthy
+          - Unhealthy
+          - Offline
+          - Maintenance
+        description:
+          type: string
+        updated_by:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    ForgeError:
+      type: object
+      properties:
+        error:
+          type: string
+    ForgeBuildResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          example: SUCCESS
+          description: PENDING | BUILDING | SUCCESS | FAILED
+        buildType:
+          type: string
+          description: requirements | git | app
+        creatorId:
+          type: string
+          nullable: true
+        creatorEmail:
+          type: string
+          nullable: true
+        indexArtifactId:
+          type: integer
+          format: int64
+          nullable: true
+        indexArtifactVersion:
+          type: string
+          nullable: true
+        ciBuildName:
+          type: string
+          nullable: true
+        repoUrl:
+          type: string
+          nullable: true
+        repoRef:
+          type: string
+          nullable: true
+        entrypointFile:
+          type: string
+          nullable: true
+        metadataSource:
+          type: string
+        projectDir:
+          type: string
+          nullable: true
+        pythonVersion:
+          type: string
+          example: '3.12'
+        runner:
+          type: string
+          nullable: true
+        baseDependenciesUrl:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ForgePageResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForgeBuildResponse'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    ForgeViolation:
+      type: object
+      properties:
+        line:
+          type: integer
+        content:
+          type: string
+        message:
+          type: string
+    ForgeValidationResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        violations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForgeViolation'
+    ForgeBulkDeleteResponse:
+      type: object
+      properties:
+        deleted:
+          type: array
+          items:
+            type: integer
+            format: int64
+        failed:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                format: int64
+              error:
+                type: string
+    BulkDeleteBuildsRequest:
+      type: object
+      required:
+      - statuses
+      properties:
+        statuses:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+            - FAILED
+            - SUCCESS
+        older_than:
+          type: string
+          format: date-time
+        build_type:
+          type: string
+          description: requirements | git | app
+    ZombieCleanupRequest:
+      type: object
+      properties:
+        older_than:
+          type: string
+          format: date-time
+        build_type:
+          type: string
+          description: requirements | git | app
+    CreateVenvRequest:
+      type: object
+      required:
+      - name
+      - version
+      - requirements
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        version:
+          type: string
+          maxLength: 50
+        description:
+          type: string
+          maxLength: 2000
+        requirements:
+          type: string
+          format: binary
+          description: requirements.txt, 1 byte - 100KB
+        python_version:
+          type: string
+          maxLength: 10
+          enum:
+          - '3.10'
+          - '3.12'
+          default: '3.12'
+    CreateGitBuildRequest:
+      type: object
+      required:
+      - repo_url
+      description: |
+        name/version become required depending on metadata_source: "manual" (default) requires both; "version" requires only name (version resolved from pyproject.toml); "full" resolves both from pyproject.toml.
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        version:
+          type: string
+          maxLength: 50
+        description:
+          type: string
+          maxLength: 2000
+        repo_url:
+          type: string
+          format: uri
+          maxLength: 2048
+        repo_ref:
+          type: string
+          maxLength: 255
+          default: main
+        entrypoint_file:
+          type: string
+          maxLength: 500
+        metadata_source:
+          type: string
+          maxLength: 32
+          enum:
+          - manual
+          - version
+          - full
+          default: manual
+        project_dir:
+          type: string
+          maxLength: 500
+          description: relative path, no .. escape
+        python_version:
+          type: string
+          maxLength: 10
+          enum:
+          - '3.10'
+          - '3.12'
+          default: '3.12'
+    CreateAppBuildRequest:
+      type: object
+      required:
+      - repo_url
+      description: name/version/builderImage/runner are resolved server-side from metadata.yaml.
+      properties:
+        repo_url:
+          type: string
+          format: uri
+          maxLength: 2048
+        repo_ref:
+          type: string
+          maxLength: 255
+          default: main
+        project_dir:
+          type: string
+          maxLength: 500
+          description: relative path, no .. escape
+    SecretKeyRefRequest:
+      type: object
+      required:
+      - name
+      - key
+      properties:
+        name:
+          type: string
+        key:
+          type: string
+    CreateGitWatcherRequest:
+      type: object
+      required:
+      - name
+      - repo_url
+      - build_type
+      properties:
+        name:
+          type: string
+          maxLength: 253
+        repo_url:
+          type: string
+          format: uri
+          maxLength: 2048
+        repo_ref:
+          type: string
+          maxLength: 255
+          default: main
+        build_type:
+          type: string
+          maxLength: 32
+          enum:
+          - git
+          - app
+        enabled:
+          type: boolean
+          nullable: true
+          default: true
+        token_secret_ref:
+          $ref: '#/components/schemas/SecretKeyRefRequest'
+        artifact_name:
+          type: string
+          maxLength: 255
+        metadata_source:
+          type: string
+          maxLength: 32
+          enum:
+          - manual
+          - version
+          - full
+          default: manual
+          description: only meaningful when build_type=git
+        version:
+          type: string
+          maxLength: 50
+        python_version:
+          type: string
+          maxLength: 10
+          enum:
+          - '3.10'
+          - '3.12'
+        entrypoint_file:
+          type: string
+          maxLength: 500
+        project_dir:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+          maxLength: 2000
+    UpdateGitWatcherRequest:
+      type: object
+      required:
+      - repo_url
+      - build_type
+      description: Same fields as CreateGitWatcherRequest, minus name (taken from the URL path).
+      properties:
+        repo_url:
+          type: string
+          format: uri
+          maxLength: 2048
+        repo_ref:
+          type: string
+          maxLength: 255
+          default: main
+        build_type:
+          type: string
+          maxLength: 32
+          enum:
+          - git
+          - app
+        enabled:
+          type: boolean
+          nullable: true
+        token_secret_ref:
+          $ref: '#/components/schemas/SecretKeyRefRequest'
+        artifact_name:
+          type: string
+          maxLength: 255
+        metadata_source:
+          type: string
+          maxLength: 32
+          enum:
+          - manual
+          - version
+          - full
+        version:
+          type: string
+          maxLength: 50
+        python_version:
+          type: string
+          maxLength: 10
+          enum:
+          - '3.10'
+          - '3.12'
+        entrypoint_file:
+          type: string
+          maxLength: 500
+        project_dir:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+          maxLength: 2000
+    SecretKeyRefResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        key:
+          type: string
+    GitWatcherSpecResponse:
+      type: object
+      properties:
+        repoURL:
+          type: string
+        repoRef:
+          type: string
+        buildType:
+          type: string
+        enabled:
+          type: boolean
+          nullable: true
+        tokenSecretRef:
+          $ref: '#/components/schemas/SecretKeyRefResponse'
+        name:
+          type: string
+          description: artifact_name from the create/update request
+        metadataSource:
+          type: string
+        version:
+          type: string
+        pythonVersion:
+          type: string
+        entrypointFile:
+          type: string
+        projectDir:
+          type: string
+        description:
+          type: string
+    GitWatcherStatusResponse:
+      type: object
+      properties:
+        phase:
+          type: string
+        lastSeenCommit:
+          type: string
+        lastBuiltVersion:
+          type: string
+        lastBuildName:
+          type: string
+        lastBuildVersion:
+          type: string
+        consecutiveFailures:
+          type: integer
+        lastCheckedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastError:
+          type: string
+        message:
+          type: string
+    GitWatcherResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        namespace:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/GitWatcherSpecResponse'
+        status:
+          $ref: '#/components/schemas/GitWatcherStatusResponse'
+    GitWatcherPageResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GitWatcherResponse'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    IndexError:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: string
+          example: artifact not found
+    IndexTypeResponse:
+      type: object
+      required:
+      - id
+      - name
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 255
+          example: ml-model
+        description:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    IndexCreateTypeRequest:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+    IndexUpdateTypeRequest:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+    IndexArtifactResponse:
+      type: object
+      required:
+      - id
+      - fullName
+      - types
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        fullName:
+          type: string
+          maxLength: 500
+          example: org.platform.data.pipeline
+        description:
+          type: string
+          nullable: true
+        types:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexTypeResponse'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    IndexArtifactPage:
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - pageSize
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexArtifactResponse'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    IndexCreateArtifactRequest:
+      type: object
+      required:
+      - fullName
+      properties:
+        fullName:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+    IndexUpdateArtifactRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+    IndexTagResponse:
+      type: object
+      required:
+      - id
+      - artifactId
+      - tag
+      - versionId
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        artifactId:
+          type: integer
+          format: int64
+        tag:
+          type: string
+        versionId:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    IndexVersionResponse:
+      type: object
+      required:
+      - id
+      - artifactId
+      - version
+      - major
+      - minor
+      - patch
+      - tags
+      - createdAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        artifactId:
+          type: integer
+          format: int64
+        version:
+          type: string
+          example: 1.2.3
+        major:
+          type: integer
+        minor:
+          type: integer
+        patch:
+          type: integer
+        config:
+          type: string
+          nullable: true
+          description: Raw configuration string (JSON or YAML)
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexTagResponse'
+        createdAt:
+          type: string
+          format: date-time
+    IndexCreateVersionRequest:
+      type: object
+      required:
+      - version
+      properties:
+        version:
+          type: string
+          pattern: ^\d+\.\d+\.\d+$
+        config:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tag names to assign on creation
+    IndexAssignTagRequest:
+      type: object
+      required:
+      - version
+      properties:
+        version:
+          type: string
+          pattern: ^\d+\.\d+\.\d+$
+    IndexFileResponse:
+      type: object
+      required:
+      - id
+      - versionId
+      - name
+      - storageBackend
+      - status
+      - downloadUrl
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        versionId:
+          type: integer
+          format: int64
+        name:
+          type: string
+          example: model.onnx
+        contentType:
+          type: string
+          nullable: true
+        sizeBytes:
+          type: integer
+          format: int64
+          nullable: true
+        storageBackend:
+          type: string
+          enum:
+          - FILESYSTEM
+          - S3
+        status:
+          type: string
+          enum:
+          - PENDING
+          - AVAILABLE
+          - ERROR
+        downloadUrl:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    WeaveError:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+    K8sObjectMeta:
+      type: object
+      properties:
+        name:
+          type: string
+        namespace:
+          type: string
+        uid:
+          type: string
+        resourceVersion:
+          type: string
+        generation:
+          type: integer
+        creationTimestamp:
+          type: string
+          format: date-time
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+    K8sEnvVar:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        valueFrom:
+          type: object
+          additionalProperties: true
+    K8sResourceRequirements:
+      type: object
+      properties:
+        limits:
+          type: object
+          additionalProperties:
+            type: string
+        requests:
+          type: object
+          additionalProperties:
+            type: string
+    K8sLocalObjectReference:
+      type: object
+      properties:
+        name:
+          type: string
+    K8sJob:
+      type: object
+      description: Standard Kubernetes batch/v1 Job — modeled as an opaque object.
+      additionalProperties: true
+    K8sDeployment:
+      type: object
+      description: Standard Kubernetes apps/v1 Deployment — modeled as an opaque object.
+      additionalProperties: true
+    K8sEvent:
+      type: object
+      description: Standard Kubernetes core/v1 Event — modeled as an opaque object.
+      additionalProperties: true
+    WeaveVolumeMount:
+      type: object
+      required:
+      - name
+      - mountPath
+      properties:
+        name:
+          type: string
+        mountPath:
+          type: string
+        secretName:
+          type: string
+        configMapName:
+          type: string
+    WeaveRetryPolicy:
+      type: object
+      properties:
+        maxRetries:
+          type: integer
+          minimum: 0
+          default: 0
+        backoffSeconds:
+          type: integer
+          minimum: 1
+          default: 10
+    WeaveJobTemplateSpec:
+      type: object
+      required:
+      - image
+      properties:
+        image:
+          type: string
+        command:
+          type: array
+          items:
+            type: string
+        args:
+          type: array
+          items:
+            type: string
+        env:
+          type: array
+          items:
+            $ref: '#/components/schemas/K8sEnvVar'
+        resources:
+          $ref: '#/components/schemas/K8sResourceRequirements'
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveVolumeMount'
+        retryPolicy:
+          $ref: '#/components/schemas/WeaveRetryPolicy'
+        parallelism:
+          type: integer
+          minimum: 1
+          default: 1
+        completions:
+          type: integer
+          minimum: 1
+          default: 1
+        activeDeadlineSeconds:
+          type: integer
+          format: int64
+          nullable: true
+        serviceAccountName:
+          type: string
+        podSecurityContext:
+          type: object
+          additionalProperties: true
+        containerSecurityContext:
+          type: object
+          additionalProperties: true
+    WeaveJobTemplateStatus:
+      type: object
+      properties:
+        observedGeneration:
+          type: integer
+          format: int64
+        valid:
+          type: boolean
+        validationMessage:
+          type: string
+    WeaveJobTemplate:
+      type: object
+      properties:
+        kind:
+          type: string
+          example: WeaveJobTemplate
+        apiVersion:
+          type: string
+          example: weave.fusion-platform.io/v1alpha1
+        metadata:
+          $ref: '#/components/schemas/K8sObjectMeta'
+        spec:
+          $ref: '#/components/schemas/WeaveJobTemplateSpec'
+        status:
+          $ref: '#/components/schemas/WeaveJobTemplateStatus'
+    WeaveJobTemplateList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveJobTemplate'
+    WeaveServicePort:
+      type: object
+      required:
+      - name
+      - port
+      properties:
+        name:
+          type: string
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        targetPort:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: Defaults to port
+        protocol:
+          type: string
+          enum:
+          - TCP
+          - UDP
+          - SCTP
+          default: TCP
+    WeaveIngressRule:
+      type: object
+      required:
+      - host
+      - servicePort
+      properties:
+        host:
+          type: string
+        path:
+          type: string
+          default: /
+        pathType:
+          type: string
+          enum:
+          - Exact
+          - Prefix
+          - ImplementationSpecific
+          default: Prefix
+        servicePort:
+          type: string
+    WeaveIngressSpec:
+      type: object
+      required:
+      - rules
+      properties:
+        ingressClassName:
+          type: string
+          nullable: true
+        rules:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/WeaveIngressRule'
+        tlsSecretName:
+          type: string
+    WeaveCodeSourceSpec:
+      type: object
+      required:
+      - artifactName
+      - tag
+      properties:
+        indexURL:
+          type: string
+        artifactName:
+          type: string
+        tag:
+          type: string
+        mountPath:
+          type: string
+          default: /weave-code
+        loaderImage:
+          type: string
+        loaderImagePullPolicy:
+          type: string
+          enum:
+          - Always
+          - Never
+          - IfNotPresent
+    WeaveServiceTemplateSpec:
+      type: object
+      required:
+      - image
+      - ports
+      properties:
+        image:
+          type: string
+          minLength: 1
+        command:
+          type: array
+          items:
+            type: string
+        args:
+          type: array
+          items:
+            type: string
+        env:
+          type: array
+          items:
+            $ref: '#/components/schemas/K8sEnvVar'
+        resources:
+          $ref: '#/components/schemas/K8sResourceRequirements'
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveVolumeMount'
+        serviceAccountName:
+          type: string
+        podSecurityContext:
+          type: object
+          additionalProperties: true
+        containerSecurityContext:
+          type: object
+          additionalProperties: true
+        replicas:
+          type: integer
+          minimum: 1
+          default: 1
+        ports:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/WeaveServicePort'
+        livenessProbe:
+          type: object
+          additionalProperties: true
+        readinessProbe:
+          type: object
+          additionalProperties: true
+        startupProbe:
+          type: object
+          additionalProperties: true
+        serviceType:
+          type: string
+          enum:
+          - ClusterIP
+          - NodePort
+          - LoadBalancer
+          default: ClusterIP
+        ingress:
+          $ref: '#/components/schemas/WeaveIngressSpec'
+        unhealthyDuration:
+          type: string
+          default: 5m
+        revisionHistoryLimit:
+          type: integer
+          default: 5
+          minimum: 1
+        codeSource:
+          $ref: '#/components/schemas/WeaveCodeSourceSpec'
+    WeaveServiceTemplateStatus:
+      type: object
+      properties:
+        observedGeneration:
+          type: integer
+          format: int64
+        valid:
+          type: boolean
+        validationMessage:
+          type: string
+    WeaveServiceTemplate:
+      type: object
+      properties:
+        kind:
+          type: string
+          example: WeaveServiceTemplate
+        apiVersion:
+          type: string
+          example: weave.fusion-platform.io/v1alpha1
+        metadata:
+          $ref: '#/components/schemas/K8sObjectMeta'
+        spec:
+          $ref: '#/components/schemas/WeaveServiceTemplateSpec'
+        status:
+          $ref: '#/components/schemas/WeaveServiceTemplateStatus'
+    WeaveServiceTemplateList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveServiceTemplate'
+    WeaveChainStep:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+        stepKind:
+          type: string
+          enum:
+          - Job
+          - Deploy
+          default: Job
+        jobTemplateRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+        serviceTemplateRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+        dependsOn:
+          type: array
+          items:
+            type: string
+        runOnSuccess:
+          type: boolean
+          default: true
+        runOnFailure:
+          type: boolean
+          default: false
+        envOverrides:
+          type: array
+          items:
+            $ref: '#/components/schemas/K8sEnvVar'
+        producesOutput:
+          type: boolean
+        consumesOutputFrom:
+          type: array
+          items:
+            type: string
+    WeaveSharedStorageSpec:
+      type: object
+      required:
+      - size
+      properties:
+        size:
+          type: string
+          example: 500Mi
+        storageClassName:
+          type: string
+          nullable: true
+    WeaveChainSpec:
+      type: object
+      required:
+      - steps
+      properties:
+        steps:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/WeaveChainStep'
+        failurePolicy:
+          type: string
+          enum:
+          - StopAll
+          - ContinueOthers
+          - RetryFailed
+          default: StopAll
+        concurrencyPolicy:
+          type: string
+          enum:
+          - Wait
+          - Forbid
+          default: Wait
+        sharedStorage:
+          $ref: '#/components/schemas/WeaveSharedStorageSpec'
+    WeaveActiveDeploymentStatus:
+      type: object
+      properties:
+        deploymentName:
+          type: string
+        stepName:
+          type: string
+        health:
+          type: string
+          enum:
+          - Healthy
+          - Unhealthy
+          - RollingBack
+          - RolledBack
+          - Unknown
+        currentRevision:
+          type: string
+        lastRollbackRevision:
+          type: string
+        unhealthySince:
+          type: string
+          format: date-time
+          nullable: true
+        lastRollbackTime:
+          type: string
+          format: date-time
+          nullable: true
+        unhealthyDurationSeconds:
+          type: integer
+          format: int64
+        message:
+          type: string
+        codeSourceArtifact:
+          type: string
+        codeSourceTag:
+          type: string
+        codeSourceIndexURL:
+          type: string
+        codeSourceDeployedVersion:
+          type: string
+    WeaveChainStatus:
+      type: object
+      properties:
+        observedGeneration:
+          type: integer
+          format: int64
+        valid:
+          type: boolean
+        validationMessage:
+          type: string
+        activeDeployments:
+          type: object
+          description: keyed by "<chainName>-<stepName>"
+          additionalProperties:
+            $ref: '#/components/schemas/WeaveActiveDeploymentStatus'
+    WeaveChain:
+      type: object
+      properties:
+        kind:
+          type: string
+          example: WeaveChain
+        apiVersion:
+          type: string
+          example: weave.fusion-platform.io/v1alpha1
+        metadata:
+          $ref: '#/components/schemas/K8sObjectMeta'
+        spec:
+          $ref: '#/components/schemas/WeaveChainSpec'
+        status:
+          $ref: '#/components/schemas/WeaveChainStatus'
+    WeaveChainList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveChain'
+    WeaveWebhookConfig:
+      type: object
+      required:
+      - path
+      properties:
+        path:
+          type: string
+          minLength: 2
+          pattern: ^/.*
+        secretRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+    WeaveBatchCronConfig:
+      type: object
+      required:
+      - jobsConfigMapRef
+      properties:
+        jobsConfigMapRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+    WeaveKafkaConfig:
+      type: object
+      required:
+      - brokers
+      - topic
+      - consumerGroup
+      properties:
+        brokers:
+          type: array
+          items:
+            type: string
+        topic:
+          type: string
+        consumerGroup:
+          type: string
+        secretRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+        eventFilter:
+          type: array
+          items:
+            type: string
+            enum:
+            - put
+            - delete
+            - get
+        bucketFilter:
+          type: array
+          items:
+            type: string
+        maxConcurrentRuns:
+          type: integer
+          description: 0 = unlimited
+    WeaveTriggerSpec:
+      type: object
+      required:
+      - chainRef
+      - type
+      properties:
+        chainRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+        type:
+          type: string
+          enum:
+          - OnDemand
+          - Cron
+          - Webhook
+          - BatchCron
+          - Kafka
+        schedule:
+          type: string
+          description: Cron expression; only for type=Cron
+        webhook:
+          $ref: '#/components/schemas/WeaveWebhookConfig'
+        batchCron:
+          $ref: '#/components/schemas/WeaveBatchCronConfig'
+        kafka:
+          $ref: '#/components/schemas/WeaveKafkaConfig'
+        paused:
+          type: boolean
+        parameterOverrides:
+          type: array
+          items:
+            $ref: '#/components/schemas/K8sEnvVar'
+    WeaveTriggerStatus:
+      type: object
+      properties:
+        active:
+          type: boolean
+        lastScheduleTime:
+          type: string
+          format: date-time
+          nullable: true
+        lastRunName:
+          type: string
+        webhookURL:
+          type: string
+        pendingRuns:
+          type: array
+          items:
+            type: string
+        batchJobCount:
+          type: integer
+          description: BatchCron only
+        batchJobErrors:
+          type: integer
+          description: BatchCron only
+    WeaveTrigger:
+      type: object
+      properties:
+        kind:
+          type: string
+          example: WeaveTrigger
+        apiVersion:
+          type: string
+          example: weave.fusion-platform.io/v1alpha1
+        metadata:
+          $ref: '#/components/schemas/K8sObjectMeta'
+        spec:
+          $ref: '#/components/schemas/WeaveTriggerSpec'
+        status:
+          $ref: '#/components/schemas/WeaveTriggerStatus'
+    WeaveTriggerList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveTrigger'
+    WeaveBatchTriggerRequest:
+      type: object
+      required:
+      - name
+      - chainRef
+      - jobs
+      properties:
+        name:
+          type: string
+        chainRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+        jobs:
+          type: string
+          description: Raw jobs YAML
+          parsed via trigger.ParseBatchJobs: null
+    WeaveBatchValidationError:
+      type: object
+      properties:
+        line:
+          type: integer
+        message:
+          type: string
+    WeaveBatchValidateResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveBatchValidationError'
+    WeaveKafkaTriggerRequest:
+      type: object
+      required:
+      - name
+      - chainRef
+      - kafka
+      properties:
+        name:
+          type: string
+          description: Required on create only
+        chainRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+        kafka:
+          $ref: '#/components/schemas/WeaveKafkaConfig'
+    WeaveRunStepOverride:
+      type: object
+      required:
+      - stepName
+      - artifactName
+      - tag
+      properties:
+        stepName:
+          type: string
+        artifactName:
+          type: string
+        tag:
+          type: string
+        ingressHost:
+          type: string
+        indexURL:
+          type: string
+    WeaveRunSpec:
+      type: object
+      required:
+      - chainRef
+      properties:
+        chainRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+        triggerRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+        parameterOverrides:
+          type: array
+          items:
+            $ref: '#/components/schemas/K8sEnvVar'
+        stepOverrides:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveRunStepOverride'
+    WeaveRunStepStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        phase:
+          type: string
+          enum:
+          - Pending
+          - Running
+          - Succeeded
+          - Failed
+          - Skipped
+          - Retrying
+          - Deployed
+        jobRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+        retryCount:
+          type: integer
+        nextRetryAfter:
+          type: string
+          format: date-time
+          nullable: true
+        startTime:
+          type: string
+          format: date-time
+          nullable: true
+        completionTime:
+          type: string
+          format: date-time
+          nullable: true
+        message:
+          type: string
+        outputCaptured:
+          type: boolean
+        deploymentRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+    WeaveRunStatus:
+      type: object
+      properties:
+        phase:
+          type: string
+          enum:
+          - Pending
+          - Running
+          - Succeeded
+          - Failed
+          - Stopped
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveRunStepStatus'
+        startTime:
+          type: string
+          format: date-time
+          nullable: true
+        completionTime:
+          type: string
+          format: date-time
+          nullable: true
+        message:
+          type: string
+        sharedPVCName:
+          type: string
+        activeDeployments:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/WeaveActiveDeploymentStatus'
+    WeaveRun:
+      type: object
+      properties:
+        kind:
+          type: string
+          example: WeaveRun
+        apiVersion:
+          type: string
+          example: weave.fusion-platform.io/v1alpha1
+        metadata:
+          $ref: '#/components/schemas/K8sObjectMeta'
+        spec:
+          $ref: '#/components/schemas/WeaveRunSpec'
+        status:
+          $ref: '#/components/schemas/WeaveRunStatus'
+    WeaveRunList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveRun'
+    WeaveMonitorRunSummary:
+      type: object
+      properties:
+        name:
+          type: string
+        chain:
+          type: string
+        phase:
+          type: string
+          enum:
+          - Pending
+          - Running
+          - Succeeded
+          - Failed
+          - Stopped
+        startTime:
+          type: string
+          format: date-time
+          nullable: true
+        completionTime:
+          type: string
+          format: date-time
+          nullable: true
+        stepCount:
+          type: integer
+        failedSteps:
+          type: integer
+        message:
+          type: string
+    WeaveMonitorRunDetail:
+      type: object
+      properties:
+        run:
+          $ref: '#/components/schemas/WeaveRun'
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/K8sJob'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/K8sEvent'
+    WeaveMonitorLogResponse:
+      type: object
+      properties:
+        runName:
+          type: string
+        stepName:
+          type: string
+        podName:
+          type: string
+        lines:
+          type: array
+          items:
+            type: string
+    WeaveMonitorRunStats:
+      type: object
+      properties:
+        window:
+          type: string
+        total:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        running:
+          type: integer
+        pending:
+          type: integer
+        stopped:
+          type: integer
+        successRate:
+          type: number
+          format: double
+        avgDurationMs:
+          type: integer
+          format: int64
+        minDurationMs:
+          type: integer
+          format: int64
+        maxDurationMs:
+          type: integer
+          format: int64
+    ContentError:
+      type: object
+      properties:
+        error:
+          type: string
+    ContentPagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+    ChangelogChanges:
+      type: object
+      properties:
+        added:
+          type: array
+          items:
+            type: string
+        changed:
+          type: array
+          items:
+            type: string
+        fixed:
+          type: array
+          items:
+            type: string
+        removed:
+          type: array
+          items:
+            type: string
+    ChangelogProjectEntry:
+      type: object
+      properties:
+        project:
+          type: string
+        version:
+          type: string
+        changes:
+          $ref: '#/components/schemas/ChangelogChanges'
+    ChangelogDateGroup:
+      type: object
+      properties:
+        date:
+          type: string
+          description: ISO YYYY-MM-DD, or "unreleased"
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChangelogProjectEntry'
+    ChangelogResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChangelogDateGroup'
+        pagination:
+          $ref: '#/components/schemas/ContentPagination'
+    HelpArticleSummary:
+      type: object
+      properties:
+        service:
+          type: string
+        type:
+          type: string
+          enum:
+          - tutorial
+          - how-to
+          - reference
+          - explanation
+        slug:
+          type: string
+        title:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        routes:
+          type: array
+          items:
+            type: string
+          description: Frontend paths for context-sensitive help
+        summary:
+          type: string
+    HelpListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/HelpArticleSummary'
+        pagination:
+          $ref: '#/components/schemas/ContentPagination'
+    ArticleResponse:
+      allOf:
+      - $ref: '#/components/schemas/HelpArticleSummary'
+      - type: object
+        properties:
+          body:
+            type: string
+            description: Full markdown body
+    VideoResponse:
+      type: object
+      properties:
+        service:
+          type: string
+        slug:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        thumbnailUrl:
+          type: string
+        videoUrl:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+    VideoListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/VideoResponse'
+        pagination:
+          $ref: '#/components/schemas/ContentPagination'
   pathItems:
     proxy:
       parameters:
-        - in: path
-          name: path
-          required: true
-          schema: { type: string }
-          description: Upstream path, forwarded verbatim after stripping the /api/<service> prefix
+      - in: path
+        name: path
+        required: true
+        schema:
+          type: string
+        description: Upstream path, forwarded verbatim after stripping the /api/<service> prefix
       get:
-        tags: [proxy]
+        tags:
+        - proxy
         summary: Proxy passthrough (any HTTP method)
-        security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+        security:
+        - sessionCookie: []
+        - bearerAuth: []
         responses:
-          "200": { description: Upstream response, forwarded verbatim }
-          "401": { description: No valid session or bearer token }
-          "403": { description: Missing required RBAC permission for this route }
+          '200':
+            description: Upstream response
+            forwarded verbatim: null
+          '401':
+            description: No valid session or bearer token
+          '403':
+            description: Missing required RBAC permission for this route
       post:
-        tags: [proxy]
+        tags:
+        - proxy
         summary: Proxy passthrough (any HTTP method)
-        security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+        security:
+        - sessionCookie: []
+        - bearerAuth: []
         responses:
-          "200": { description: Upstream response, forwarded verbatim }
-          "401": { description: No valid session or bearer token }
-          "403": { description: Missing required RBAC permission for this route }
+          '200':
+            description: Upstream response
+            forwarded verbatim: null
+          '401':
+            description: No valid session or bearer token
+          '403':
+            description: Missing required RBAC permission for this route
       put:
-        tags: [proxy]
+        tags:
+        - proxy
         summary: Proxy passthrough (any HTTP method)
-        security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+        security:
+        - sessionCookie: []
+        - bearerAuth: []
         responses:
-          "200": { description: Upstream response, forwarded verbatim }
-          "401": { description: No valid session or bearer token }
-          "403": { description: Missing required RBAC permission for this route }
+          '200':
+            description: Upstream response
+            forwarded verbatim: null
+          '401':
+            description: No valid session or bearer token
+          '403':
+            description: Missing required RBAC permission for this route
       patch:
-        tags: [proxy]
+        tags:
+        - proxy
         summary: Proxy passthrough (any HTTP method)
-        security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+        security:
+        - sessionCookie: []
+        - bearerAuth: []
         responses:
-          "200": { description: Upstream response, forwarded verbatim }
-          "401": { description: No valid session or bearer token }
-          "403": { description: Missing required RBAC permission for this route }
+          '200':
+            description: Upstream response
+            forwarded verbatim: null
+          '401':
+            description: No valid session or bearer token
+          '403':
+            description: Missing required RBAC permission for this route
       delete:
-        tags: [proxy]
+        tags:
+        - proxy
         summary: Proxy passthrough (any HTTP method)
-        security: [{ sessionCookie: [] }, { bearerAuth: [] }]
+        security:
+        - sessionCookie: []
+        - bearerAuth: []
         responses:
-          "200": { description: Upstream response, forwarded verbatim }
-          "401": { description: No valid session or bearer token }
-          "403": { description: Missing required RBAC permission for this route }
+          '200':
+            description: Upstream response
+            forwarded verbatim: null
+          '401':
+            description: No valid session or bearer token
+          '403':
+            description: Missing required RBAC permission for this route
+  responses:
+    ForgeBadRequest:
+      description: Invalid request body or parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ForgeError'
+    ForgeNotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ForgeError'
+    ForgeConflict:
+      description: Resource already exists / build already in progress
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ForgeError'
+    ForgeInternalError:
+      description: Unexpected internal/upstream error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ForgeError'
+    IndexBadRequest:
+      description: Invalid request body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/IndexError'
+    IndexNotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/IndexError'
+    WeaveBadRequest:
+      description: Invalid request body or path parameter
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WeaveError'
+    WeaveNotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WeaveError'
+    WeaveConflict:
+      description: Resource already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WeaveError'

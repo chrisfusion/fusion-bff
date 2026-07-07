@@ -1,0 +1,67 @@
+{{- if .Values.rbacSeed.enabled }}
+{{- if not (or .Values.db.create .Values.db.existingSecret) }}
+{{ fail "db.create or db.existingSecret must be set when rbacSeed.enabled is true (RBAC DB seeding connects using the app's own DB_DSN)" }}
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "fusion-bff.fullname" . }}-seed-rbac
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fusion-bff.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-3"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: {{ .Values.rbacSeed.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "fusion-bff.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- with .Values.rbacSeed.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: seed-rbac
+          image: {{ .Values.rbacSeed.image }}
+          {{- with .Values.rbacSeed.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fusion-bff.dbSecretName" . }}
+                  key: {{ .Values.db.existingSecretKey }}
+            - name: ADMIN_GROUP
+              value: {{ required "rbacSeed.adminGroup is required when rbacSeed.enabled is true" .Values.rbacSeed.adminGroup | quote }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              # Table is created defensively so this job doesn't depend on ordering
+              # relative to the app binary's own Migrate() step on first startup.
+              # Keep this DDL in sync with internal/db/db.go's group_role_assignments definition.
+              # NOTE: psql's :'var' substitution only works reading from a script/stdin,
+              # NOT via -c "..." (verified against postgres:16-alpine) — hence the heredoc.
+              psql "${DB_DSN}" -v ON_ERROR_STOP=1 -v admin_group="${ADMIN_GROUP}" <<'SQL'
+              CREATE TABLE IF NOT EXISTS group_role_assignments (
+                  id         SERIAL PRIMARY KEY,
+                  group_name TEXT NOT NULL,
+                  role_name  TEXT NOT NULL,
+                  created_by TEXT NOT NULL DEFAULT '',
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  UNIQUE (group_name, role_name)
+              );
+              INSERT INTO group_role_assignments (group_name, role_name, created_by)
+              VALUES (:'admin_group', 'admin', 'helm-bootstrap')
+              ON CONFLICT (group_name, role_name) DO NOTHING;
+              SQL
+              echo "admin group '${ADMIN_GROUP}' -> role 'admin' ensured in group_role_assignments"
+{{- end }}

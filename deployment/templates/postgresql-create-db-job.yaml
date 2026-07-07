@@ -1,0 +1,62 @@
+{{- if .Values.postgresql.createDatabaseJob.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "fusion-bff.fullname" . }}-create-db
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "fusion-bff.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: {{ .Values.postgresql.createDatabaseJob.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "fusion-bff.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- with .Values.postgresql.createDatabaseJob.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: create-db
+          image: {{ .Values.postgresql.createDatabaseJob.image }}
+          {{- with .Values.postgresql.createDatabaseJob.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: PGHOST
+              value: {{ required "postgresql.external.host is required when postgresql.createDatabaseJob.enabled is true" .Values.postgresql.external.host | quote }}
+            - name: PGPORT
+              value: {{ .Values.postgresql.external.port | default 5432 | quote }}
+            - name: PGUSER
+              value: {{ .Values.postgresql.external.username | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fusion-bff.pgAdminSecretName" . }}
+                  {{- if .Values.postgresql.external.existingSecret }}
+                  key: {{ .Values.postgresql.external.existingSecretKey | default "password" }}
+                  {{- else }}
+                  key: password
+                  {{- end }}
+            - name: TARGET_DB
+              value: {{ .Values.postgresql.createDatabaseJob.databaseName | quote }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              EXISTS=$(psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = :'target'" -v target="${TARGET_DB}")
+              if [ "${EXISTS}" = "1" ]; then
+                echo "database ${TARGET_DB} already exists on ${PGHOST}:${PGPORT} — nothing to do"
+              else
+                psql -d postgres -c "CREATE DATABASE \"${TARGET_DB}\""
+                echo "database ${TARGET_DB} created on ${PGHOST}:${PGPORT}"
+              fi
+{{- end }}

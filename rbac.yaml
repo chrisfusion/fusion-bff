@@ -98,6 +98,7 @@ route_permissions:
   - { method: POST,   path: /api/index/api/v1/artifacts,              permission: index:artifacts:write }
   - { method: PUT,    path: /api/index/api/v1/artifacts/*/tags/*,     permission: index:artifacts:write }
   - { method: DELETE, path: /api/index/api/v1/artifacts/*/tags/*,     permission: index:artifacts:write }
+  - { method: PUT,    path: /api/index/api/v1/artifacts/*,            permission: index:artifacts:write }
   - { method: "*",    path: /api/index/api/v1/types*,                 permission: index:types:manage }
   - { method: DELETE, path: /api/index/api/v1/admin/*,               permission: index:admin:manage }
   - { method: GET,    path: /api/index/api/v1/admin/*,               permission: index:admin:manage }
@@ -143,6 +144,7 @@ route_permissions:
   - { method: PATCH,  path: /api/weave/api/v1/kafkatriggers/*,        permission: weave:kafkatriggers:write }
   - { method: POST,   path: /api/weave/api/v1/kafkatriggers,          permission: weave:kafkatriggers:write }
   - { method: DELETE, path: /api/weave/api/v1/runs/*,                 permission: weave:runs:delete }
+  - { method: PUT,    path: /api/weave/api/v1/runs/*,                 permission: weave:runs:write }
   - { method: POST,   path: /api/weave/api/v1/runs/*/stop,            permission: weave:steps:restart }
   - { method: PATCH,  path: /api/weave/api/v1/runs/*,                 permission: weave:steps:restart }
   - { method: POST,   path: /api/weave/api/v1/runs,                   permission: weave:runs:write }

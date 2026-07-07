@@ -126,3 +126,90 @@ db:
   dsn: ""                  # PostgreSQL DSN; required when create: true
   existingSecret: ""       # name of the pre-existing Secret; required when create: false and DB is used
   existingSecretKey: "DB_DSN"  # key inside the Secret that holds the DSN
+
+# -----------------------------------------------------------------------------
+# PostgreSQL — one-time database creation (external server only; fusion-bff does
+# not bundle its own PostgreSQL). Only relevant when rbac.yaml group_source is
+# "db" or "both" (see db.* above for the app's own runtime DB_DSN connection).
+# -----------------------------------------------------------------------------
+postgresql:
+  # Runs as a Helm pre-install,pre-upgrade hook Job that creates the target database
+  # (CREATE DATABASE IF NOT EXISTS-equivalent, idempotent) before the main Deployment
+  # is applied. It does NOT create tables — schema migrations are applied by the
+  # fusion-bff binary itself on startup (internal/db/db.go Migrate()).
+  createDatabaseJob:
+    enabled: false
+    databaseName: fusion_bff
+    image: postgres:16-alpine
+    activeDeadlineSeconds: 120
+    # postgres:16-alpine runs as UID 70 (user "postgres") — matches forge/index convention.
+    # Only the psql client is used here (non-interactive -c mode), so readOnlyRootFilesystem
+    # is safe with no extra volumes.
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 70
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: ["ALL"]
+
+  # Address of the PostgreSQL server the job connects to as an admin/superuser to run
+  # CREATE DATABASE. The job always runs in the release namespace, so a short
+  # in-namespace service name (e.g. "postgresql") resolves without a FQDN; use a full
+  # external hostname for an out-of-cluster server.
+  external:
+    host: ""              # required when createDatabaseJob.enabled is true
+    port: 5432
+    username: fusion      # the user connected as must have CREATEDB privilege
+    existingSecret: ""    # name of a pre-existing Secret holding the password above
+    existingSecretKey: "password"  # key inside existingSecret holding the password.
+                                    # Default "password" matches a hand-rolled secret
+                                    # (e.g. fusion-forge's own postgresql-secret.yaml
+                                    # convention). If pointing at a Bitnami postgresql
+                                    # chart's secret instead (e.g. fusion-index's, which
+                                    # vendors "postgresql" from charts.bitnami.com), set
+                                    # username: postgres and existingSecretKey:
+                                    # postgres-password — Bitnami's "password" key is a
+                                    # different, non-superuser app user without CREATEDB.
+    password: ""          # fallback when existingSecret is empty (dev only) — chart then
+                           # creates its own Secret named <release>-postgresql-admin
+
+# -----------------------------------------------------------------------------
+# RBAC bootstrap seed — only relevant when rbac.yaml group_source is "db" (in
+# "both" mode the static group_roles in rbac.yaml already provide a baseline, so
+# this is redundant but harmless there too, since it's idempotent).
+#
+# Runs as a Helm pre-install,pre-upgrade hook Job (after postgresql.createDatabaseJob,
+# before the main Deployment) that guarantees one group -> "admin" role mapping
+# exists in group_role_assignments, so the first OIDC login for a user in that
+# group resolves to the admin role. Without this, group_source: db starts with an
+# empty table and nobody can reach /bff/admin/* to create the first assignment
+# via the API (see CLAUDE.md "group_source: db bootstrap gotcha").
+#
+# Connects using the app's own runtime db.* DB_DSN (NOT postgresql.external.* —
+# those are admin/superuser credentials for creating the database itself, this
+# job only needs INSERT/CREATE TABLE rights on the already-existing app database).
+#
+# OIDC-driven, not a literal username: fusion-bff resolves roles from the
+# Keycloak "groups" claim (stripped of its leading "/"), never from a specific
+# user id/email, so the configurable value here is the admin GROUP name — the
+# human admin becomes admin simply by being a member of that Keycloak group.
+# -----------------------------------------------------------------------------
+rbacSeed:
+  enabled: false
+  adminGroup: platform-admin   # OIDC/Keycloak group to map to the "admin" role
+  image: postgres:16-alpine
+  activeDeadlineSeconds: 60
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 70
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]

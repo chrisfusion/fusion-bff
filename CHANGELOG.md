@@ -7,6 +7,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-07-07
+
+### Added
+- `postgresql.createDatabaseJob` — a Helm `pre-install,pre-upgrade` hook Job (`deployment/templates/postgresql-create-db-job.yaml`) that creates the fusion-bff database on an existing/shared PostgreSQL server before the main Deployment is applied. Idempotent (`SELECT ... pg_database` check before `CREATE DATABASE`), using `psql` in a `postgres:16-alpine` container running as UID 70 non-root
+- `postgresql.external.*` values (`host`, `port`, `username`, `existingSecret`/`password`) — mirrors the `postgresql.auth`/`postgresql.external` convention already used by fusion-forge and fusion-index's charts, with a Secret key of `"password"`. This is a separate credential/secret from the app's own `db.*` runtime `DB_DSN`, since creating a database requires connecting with admin credentials before that database — and therefore that DSN — exists
+- `deployment/templates/postgresql-admin-secret.yaml` — chart-managed Secret for the admin credentials, only rendered when `postgresql.external.existingSecret` is unset
+- Does **not** run schema migrations or seed data — table creation stays in the app binary's own `Migrate()` step on startup, per existing design
+- `rbacSeed` — a second Helm `pre-install,pre-upgrade` hook Job (`deployment/templates/rbac-seed-job.yaml`, weight `-3`, runs after `postgresql.createDatabaseJob` and before the main Deployment) that ensures one group→role admin mapping exists in `group_role_assignments`, so `group_source: db` doesn't start with an empty table and no path to create the first admin. Connects using the app's own `db.*` `DB_DSN` (not the create-db job's admin credentials). Only configurable value is `rbacSeed.adminGroup` (default `platform-admin`) — an OIDC/Keycloak group name, since roles are always resolved from the JWT `groups` claim rather than a specific user id. Verified end-to-end against a real `postgres:16-alpine` container, including idempotent re-run
+
+## [0.6.1] — 2026-07-07
+
+### Fixed
+- Closed two RBAC gaps found while documenting the proxy surface in 0.6.0, where a route matched no `route_permissions` rule and was reachable by any authenticated caller:
+  - `PUT /api/index/api/v1/artifacts/*` now requires `index:artifacts:write` — covers both `PUT .../artifacts/{id}` (update description) and `PUT .../artifacts/{id}/types/{typeId}` (assign type), since the trailing wildcard matches both depths
+  - `PUT /api/weave/api/v1/runs/*` now requires `weave:runs:write`, matching the permission already required for `POST /runs` (create)
+- Verified both new rules via `internal/rbac.MatchRoute` (temporary test against the live `rbac.yaml`) before and after, confirming no existing route's resolved permission changed
+- Updated `internal/docs/openapi.yaml` to drop the now-resolved "RBAC GAP" notes on these three path items and set their real `x-required-permission`
+- The third finding from 0.6.0 (`DELETE .../artifacts/{id}/types/{typeId}` unexpectedly requiring `index:artifacts:delete` via the same trailing-wildcard coupling) is left as-is per explicit decision — it already enforces a permission, just a stricter one than expected, so it's a separate design question rather than an open-access gap
+
+## [0.6.0] — 2026-07-07
+
+### Added
+- `internal/docs/openapi.yaml` now explicitly documents 62 previously-generic proxy routes across fusion-forge, fusion-index, fusion-weave, and fusion-content — full request/response schemas transcribed from each upstream service's own DTOs/CRD types (fusion-index's own `openapi.yaml`, fusion-forge's `internal/api/dto/*`, fusion-flux's `api/v1alpha1/*_types.go` + `internal/apiserver`/`internal/monitoring` handlers, fusion-content's `internal/help`/`internal/videostore` DTOs)
+- Each new path item carries `x-required-permission` (and `x-resource-type` where applicable), cross-checked against the live `rbac.yaml` via `internal/rbac.MatchRoute` rather than hand-derived, to avoid documenting a permission the router doesn't actually enforce
+- New `forge`, `index`, `weave`, `weave-monitoring`, and `content` OpenAPI tags group the newly-documented routes; the existing generic `/api/<service>/{path}` `proxy` path items are kept as an explicit fallback for any route not yet itemized (e.g. a new upstream endpoint not yet reflected here)
+- Kubernetes-native nested types referenced by fusion-weave's CRDs (`EnvVar`, `ResourceRequirements`, `Probe`, `SecurityContext`, `Job`, `Deployment`, `Event`, `ObjectMeta`) are modeled as loose/opaque objects rather than fully reproduced from the k8s.io OpenAPI definitions
+
+### Fixed (documentation only — behavior unchanged)
+- Flagged four RBAC coverage gaps discovered while cross-checking permissions against `MatchRoute`, documented inline in the new spec rather than silently patched in `rbac.yaml`:
+  - `PUT /api/index/api/v1/artifacts/{id}` (update description) and `PUT /api/index/api/v1/artifacts/{id}/types/{typeId}` (assign type) match no route rule — open to any authenticated caller
+  - `DELETE /api/index/api/v1/artifacts/{id}/types/{typeId}` (unassign type) unexpectedly requires `index:artifacts:delete` — the trailing wildcard on the artifact-delete rule absorbs the `/types/{typeId}` suffix
+  - `PUT /api/weave/api/v1/runs/{name}` (full replace) matches no route rule — open to any authenticated caller, unlike every other weave resource which has an explicit PUT rule
+
 ## [0.5.1] — 2026-07-02
 
 ### Added
