@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-07-13
+
+### Added
+- Documented `authSecretRef` (`WeaveChainSpec`) and `authSecretRefOverride` (`WeaveTriggerSpec`, `WeaveRunSpec`) in `internal/docs/openapi.yaml`, reflecting the new fusion-weave feature that injects a Secret via `envFrom` into every step pod so runner-side helper libraries (e.g. the `fusion-runner` Python `KeycloakAuth` helper) can read credential keys as env vars. No RBAC or route changes needed — these are new fields on existing chain/trigger/run resources, already covered by the existing `weave:chains:write`/`weave:triggers:write`/`weave:runs:write` route rules and the generic `/weave/*path` proxy.
+
 ## [0.7.0] — 2026-07-07
 
 ### Added

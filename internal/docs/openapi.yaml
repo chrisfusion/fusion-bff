@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, and fusion-content.
-  version: 0.6.1
+  version: 0.7.1
   license:
     name: GPL-3.0
 servers:
@@ -4343,6 +4343,15 @@ components:
           default: Wait
         sharedStorage:
           $ref: '#/components/schemas/WeaveSharedStorageSpec'
+        authSecretRef:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+          description: >-
+            Optionally names a Secret injected via envFrom into every step pod
+            of this chain (Job and Deploy kind alike). Its keys become
+            environment variables that runner-side helper libraries (e.g. the
+            fusion-runner Python KeycloakAuth helper) use to obtain access
+            tokens. Overridable per-trigger (authSecretRefOverride) or
+            per-run (authSecretRefOverride); precedence is run > trigger > chain.
     WeaveActiveDeploymentStatus:
       type: object
       properties:
@@ -4497,6 +4506,12 @@ components:
           $ref: '#/components/schemas/WeaveKafkaConfig'
         paused:
           type: boolean
+        authSecretRefOverride:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+          description: >-
+            Overrides WeaveChainSpec.authSecretRef for every run created by
+            this trigger. Takes precedence over the chain default; yields to
+            WeaveRunSpec.authSecretRefOverride on the resulting run.
         parameterOverrides:
           type: array
           items:
@@ -4625,6 +4640,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WeaveRunStepOverride'
+        authSecretRefOverride:
+          $ref: '#/components/schemas/K8sLocalObjectReference'
+          description: >-
+            Overrides WeaveChainSpec.authSecretRef (and any
+            WeaveTriggerSpec.authSecretRefOverride) for this run only.
+            Injected via envFrom into every step pod of this run.
     WeaveRunStepStatus:
       type: object
       properties:
