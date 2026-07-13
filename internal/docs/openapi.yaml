@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, and fusion-content.
-  version: 0.7.2
+  version: 0.8.0
   license:
     name: GPL-3.0
 servers:
@@ -17,6 +17,8 @@ tags:
   description: Group-to-role assignment admin (requires admin:roles:manage)
 - name: system-health
   description: Live upstream probing and manual status overrides
+- name: presets
+  description: Per-unit static infrastructure presets (Kafka clusters, secret names) for creation-wizard dropdowns
 - name: forge
   description: Explicitly documented fusion-forge proxy endpoints (venvs, gitbuilds, appbuilds, gitwatchers).
 - name: index
@@ -200,6 +202,59 @@ paths:
                               - Maintenance
                             description:
                               type: string
+  /bff/presets:
+    get:
+      tags:
+      - presets
+      summary: This unit's static infrastructure presets
+      description: |
+        Sourced from a ConfigMap-mounted presets.yaml, edited per unit the same way as rbac.yaml
+        (patch the ConfigMap + roll the deployment). Empty arrays when no presets are configured.
+      x-required-permission: bff:presets:read
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: This unit's Kafka and secret presets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kafka:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: unit-a kafka
+                        brokers:
+                          type: array
+                          items:
+                            type: string
+                          example: ["kafka-0.kafka.svc.cluster.local:9092"]
+                        secretRef:
+                          type: string
+                          example: unit-a-kafka-creds
+                  secrets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: unit-a webhook auth
+                        secretName:
+                          type: string
+                          example: unit-a-webhook-token
+                        secretKey:
+                          type: string
+                          example: token
+        '401':
+          description: No valid session
+        '403':
+          description: Session lacks bff:presets:read
   /bff/admin/group-roles:
     get:
       tags:

@@ -21,6 +21,7 @@ import (
 	"github.com/fusion-platform/fusion-bff/internal/db"
 	"github.com/fusion-platform/fusion-bff/internal/mockoidc"
 	"github.com/fusion-platform/fusion-bff/internal/oidc"
+	"github.com/fusion-platform/fusion-bff/internal/presets"
 	"github.com/fusion-platform/fusion-bff/internal/proxy"
 	"github.com/fusion-platform/fusion-bff/internal/rbac"
 	"github.com/fusion-platform/fusion-bff/internal/session"
@@ -45,6 +46,13 @@ func main() {
 		slog.Error("rbac config", "error", err)
 		os.Exit(1)
 	}
+
+	presetsCfg, err := presets.LoadConfig(cfg.PresetsConfigPath)
+	if err != nil {
+		slog.Error("presets config", "error", err)
+		os.Exit(1)
+	}
+	presetsH := handler.NewPresetsHandler(presetsCfg)
 
 	// Open DB pool whenever DB_DSN is set (used by RBAC store and system health overrides).
 	var pool *pgxpool.Pool
@@ -163,7 +171,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, contentProxy, adminH, resourcePermH, systemHealthH)
+	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, contentProxy, adminH, resourcePermH, systemHealthH, presetsH)
 	if mockOIDC != nil {
 		mockOIDC.RegisterRoutes(router)
 	}

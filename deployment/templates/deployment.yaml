@@ -42,6 +42,9 @@ spec:
         - name: rbac-config
           configMap:
             name: {{ include "fusion-bff.fullname" . }}-rbac
+        - name: presets-config
+          configMap:
+            name: {{ include "fusion-bff.fullname" . }}-presets
       containers:
         - name: fusion-bff
           image: {{ include "fusion-bff.image" . }}
@@ -92,6 +95,9 @@ spec:
               readOnly: true
             - name: rbac-config
               mountPath: /etc/fusion-bff
+              readOnly: true
+            - name: presets-config
+              mountPath: /etc/fusion-bff/presets
               readOnly: true
           {{- with .Values.livenessProbe }}
           livenessProbe:

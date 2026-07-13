@@ -148,7 +148,7 @@ func TestMain(m *testing.M) {
 	weaveProxy, _ := proxy.NewUpstreamProxy(cfg.WeaveURL, "/api/weave", weaveSAToken)
 	contentProxy, _ := proxy.NewUpstreamProxy(cfg.ContentURL, "/api/content", saToken)
 
-	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, contentProxy, nil, nil, nil)
+	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, contentProxy, nil, nil, nil, nil)
 	bffServer = httptest.NewServer(router)
 	defer bffServer.Close()
 

@@ -32,6 +32,7 @@ func NewRouter(
 	adminH *handler.AdminHandler,
 	resourcePermH *handler.ResourcePermHandler,
 	systemHealthH *handler.SystemHealthHandler,
+	presetsH *handler.PresetsHandler,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -62,6 +63,10 @@ func NewRouter(
 			adminGroup.POST("/resource-permissions", resourcePermH.Create)
 			adminGroup.DELETE("/resource-permissions/:id", resourcePermH.Delete)
 		}
+	}
+
+	if presetsH != nil {
+		bff.GET("/presets", middleware.SessionAuth(store, cfg.SessionCookieName, "bff:presets:read"), presetsH.List)
 	}
 
 	if systemHealthH != nil {

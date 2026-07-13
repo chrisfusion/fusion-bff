@@ -37,6 +37,7 @@ data:
   {{- end }}
   POST_LOGIN_REDIRECT_URL: {{ .Values.config.postLoginRedirectUrl | quote }}
   RBAC_CONFIG_PATH: {{ .Values.config.rbacConfigPath | default "/etc/fusion-bff/rbac.yaml" | quote }}
+  PRESETS_CONFIG_PATH: {{ .Values.config.presetsConfigPath | default "/etc/fusion-bff/presets/presets.yaml" | quote }}
   LOG_LEVEL: {{ .Values.config.logLevel | quote }}
   LOG_FORMAT: {{ .Values.config.logFormat | quote }}
   {{- if .Values.config.oidcBypass }}

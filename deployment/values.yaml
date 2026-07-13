@@ -113,6 +113,7 @@ config:
   oidcBypassName: "Dev User"
   oidcBypassGroups: ""        # comma-separated default groups pre-selected in mock login form
   rbacConfigPath: "/etc/fusion-bff/rbac.yaml"
+  presetsConfigPath: "/etc/fusion-bff/presets/presets.yaml"
   # Logging
   logLevel: "info"    # debug | info | warn | error
   logFormat: "json"   # json | text (use text for local dev)

@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-07-13
+
+### Added
+- `GET /bff/presets` — serves this unit's static infrastructure presets (Kafka broker clusters, secret names) so fusion-spectra creation wizards can offer a dropdown instead of requiring the exact resource name to be typed. New `internal/presets` package loads an optional `presets.yaml` (missing file yields an empty preset set, unlike the mandatory `rbac.yaml`), mounted via a new `<release>-presets` ConfigMap at `/etc/fusion-bff/presets/presets.yaml` — edited the same way as `rbac.yaml` (patch the ConfigMap + roll the deployment) so each unit curates its own presets independently. Gated by new `bff:presets:read` permission (granted to `admin`/`engineer`, checked directly via `SessionAuth` — no `route_permissions` rule needed since this isn't a proxied `/api/*` route).
+
 ## [0.7.2] — 2026-07-13
 
 ### Added

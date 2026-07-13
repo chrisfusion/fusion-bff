@@ -49,6 +49,7 @@ role_permissions:
     - admin:roles:manage
     - admin:health:manage
     - index:admin:manage
+    - bff:presets:read
   engineer:
     - index:artifacts:read
     - index:artifacts:write
@@ -74,6 +75,7 @@ role_permissions:
     - content:help:read
     - content:videos:read
     - admin:users:view
+    - bff:presets:read
   viewer:
     - index:artifacts:read
     - index:metrics:read

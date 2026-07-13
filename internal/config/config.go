@@ -48,6 +48,10 @@ type Config struct {
 	// RBAC
 	RBACConfigPath string // RBAC_CONFIG_PATH — path to rbac.yaml; default ./rbac.yaml
 
+	// Infrastructure presets — optional; default path has no file, so LoadConfig
+	// tolerates it being absent and yields an empty preset set
+	PresetsConfigPath string // PRESETS_CONFIG_PATH — path to presets.yaml; default ./presets.yaml
+
 	// Logging
 	LogLevel  string // LOG_LEVEL — "debug" | "info" | "warn" | "error"; default "info"
 	LogFormat string // LOG_FORMAT — "json" | "text"; default "json"
@@ -95,6 +99,7 @@ func Load() (*Config, error) {
 	}
 
 	cfg.RBACConfigPath = envOrDefault("RBAC_CONFIG_PATH", "./rbac.yaml")
+	cfg.PresetsConfigPath = envOrDefault("PRESETS_CONFIG_PATH", "./presets.yaml")
 	cfg.DBDSN = os.Getenv("DB_DSN")
 
 	cfg.ForgeHealthURL    = envOrDefault("FORGE_HEALTH_URL",   cfg.ForgeURL+"/health")

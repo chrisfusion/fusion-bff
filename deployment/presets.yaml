@@ -1,0 +1,17 @@
+# Infrastructure presets for this unit — fills Kafka broker / secret-name
+# fields in fusion-spectra creation wizards from a dropdown instead of
+# requiring the exact resource name to be typed.
+#
+# Edited the same way as rbac.yaml: patch the ConfigMap directly and roll the
+# deployment, or update this file and run `helm upgrade`.
+
+kafka:
+  - name: "unit-a kafka"
+    brokers: ["redpanda.redpanda.svc.cluster.local:9093"]
+    secretRef: "fusion-bff"
+secrets:
+  - name: "unit-a git token"
+    secretName: "fusion-content-repos"
+    secretKey: "repos.yaml"
+  - name: "unit-a webhook auth"
+    secretName: "fusion-bff"
