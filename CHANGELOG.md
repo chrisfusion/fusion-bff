@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-07-13
+
+### Added
+- Documented `codeSource` (`WeaveJobTemplateSpec`) in `internal/docs/openapi.yaml`, reflecting the new fusion-weave feature letting Job-kind steps reference a versioned fusion-index artifact via the same `code-loader` init container mechanism as Deploy-kind steps' `WeaveServiceTemplateSpec.codeSource` — reuses the existing `WeaveCodeSourceSpec` schema. No RBAC or route changes needed: field-only addition on a resource already covered by the existing `weave:jobtemplates:write`/`weave:jobtemplates:delete` route rules.
+
 ## [0.7.1] — 2026-07-13
 
 ### Added
