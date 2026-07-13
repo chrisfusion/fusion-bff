@@ -36,6 +36,7 @@ Follow `../logging_principles.md` exactly. Key rules:
 ## Reflecting upstream API changes in the BFF
 
 1. Read upstream service CLAUDE.md; identify new REST endpoints. Practical discovery: `cd ../fusion-forge && git log --oneline -5` then `git show <hash>` to read the diff of the latest commit.
+   - Not every upstream change is a new endpoint — some are new fields on an *existing* CRD spec type (e.g. fusion-weave's `authSecretRef`/`authSecretRefOverride` on WeaveChain/Trigger/Run, added in commit `db48234`). Confirm by checking the upstream Go struct (`api/v1alpha1/*_types.go`), not just the CLAUDE.md prose. Field-only additions on a resource already covered by existing `route_permissions` rules need only an `openapi.yaml` schema update (add the property under the existing schema, reusing `K8sLocalObjectReference` etc.) — no new RBAC rule, no router change.
 2. Check rbac.yaml — GET endpoints are usually already covered by catch-all `GET /api/<svc>/*`; write/delete ops need explicit rules
 3. Add a new permission token per feature area (e.g. `forge:gitwatchers:write`) to appropriate roles in `role_permissions`. Admin-only forge maintenance endpoints use `forge:admin:manage` (parallel to `index:admin:manage`).
 4. Add route rules before the catch-all (first-match wins); follow DELETE → PUT/PATCH → POST ordering for each resource
@@ -325,4 +326,4 @@ Makefile
 - Use `### Added`, `### Changed`, `### Fixed`, or `### Removed` subsections as appropriate.
 - One bullet per logical change; keep it concise but self-contained (reader should not need to read the diff).
 - Also sync `deployment/rbac.yaml` and bump `deployment/Chart.yaml` `version`/`appVersion` when releasing.
-- **`deployment/Chart.yaml` drift**: Before bumping for a new release, check `version` against the latest CHANGELOG `[x.y.z]` entry — they can diverge if prior sessions added CHANGELOG entries without bumping the chart. Next release version is `max(chart.version, changelog.latest) + patch`.
+- **`deployment/Chart.yaml` drift**: Before bumping for a new release, check `version` against the latest CHANGELOG `[x.y.z]` entry — they can diverge if prior sessions added CHANGELOG entries without bumping the chart. Next release version is `max(chart.version, changelog.latest) + patch`. Also check `internal/docs/openapi.yaml`'s `info.version` — it can drift independently of both (seen stuck at 0.6.1 while chart/CHANGELOG were already at 0.7.0); fold it into the same `max(...)` comparison.
