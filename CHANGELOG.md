@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-07-21
+
+### Changed
+- **Breaking (docs only):** Updated `internal/docs/openapi.yaml` for fusion-weave's ingress hostname rework — `WeaveIngressRule.host` is now `WeaveIngressRule.name` and `WeaveRunStepOverride.ingressHost` is now `WeaveRunStepOverride.ingressName`, both DNS-label-only (`maxLength: 63`, `pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`). The operator now appends a cluster-wide `ingress.hostSuffix` to build the real hostname, so templates/runs can no longer specify an arbitrary external domain. Pure passthrough proxy — no BFF Go code, RBAC rule, or route change needed since the resource types were already covered by existing `weave:*` route rules.
+
 ## [0.8.0] — 2026-07-13
 
 ### Added

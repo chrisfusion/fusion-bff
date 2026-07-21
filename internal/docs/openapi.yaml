@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, and fusion-content.
-  version: 0.8.0
+  version: 0.8.1
   license:
     name: GPL-3.0
 servers:
@@ -4169,11 +4169,17 @@ components:
     WeaveIngressRule:
       type: object
       required:
-      - host
+      - name
       - servicePort
       properties:
-        host:
+        name:
           type: string
+          maxLength: 63
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          description: Leftmost DNS label for this rule's hostname; the operator
+            appends the cluster-wide ingress host suffix to form the full hostname.
+            Not a full domain — templates can never point an Ingress outside the
+            operator's configured suffix.
         path:
           type: string
           default: /
@@ -4676,8 +4682,13 @@ components:
           type: string
         tag:
           type: string
-        ingressHost:
+        ingressName:
           type: string
+          maxLength: 63
+          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+          description: Leftmost DNS label for this step's ingress hostname; the
+            operator appends the cluster-wide ingress host suffix to form the
+            full hostname.
         indexURL:
           type: string
     WeaveRunSpec:
