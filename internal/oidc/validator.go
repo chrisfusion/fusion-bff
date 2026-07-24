@@ -2,12 +2,35 @@ package oidc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
 )
+
+// groupClaim accepts either a plain group name string (the standard Keycloak
+// "Group Membership" mapper output) or a Keycloak GroupRepresentation object
+// (some custom mappers emit the full object, e.g. {"name": "...", "path": "..."})
+// instead of just the name.
+type groupClaim string
+
+func (g *groupClaim) UnmarshalJSON(data []byte) error {
+	var name string
+	if err := json.Unmarshal(data, &name); err == nil {
+		*g = groupClaim(name)
+		return nil
+	}
+	var obj struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	*g = groupClaim(obj.Name)
+	return nil
+}
 
 // TokenValidator validates a raw Bearer token and returns the resolved claims.
 type TokenValidator interface {
@@ -33,10 +56,10 @@ func (v *oidcValidator) Validate(ctx context.Context, rawToken string) (*UserCla
 	}
 
 	var raw struct {
-		Sub    string   `json:"sub"`
-		Email  string   `json:"email"`
-		Name   string   `json:"name"`
-		Groups []string `json:"groups"`
+		Sub    string       `json:"sub"`
+		Email  string       `json:"email"`
+		Name   string       `json:"name"`
+		Groups []groupClaim `json:"groups"`
 	}
 	if err := token.Claims(&raw); err != nil {
 		return nil, fmt.Errorf("extracting claims: %w", err)
@@ -45,7 +68,7 @@ func (v *oidcValidator) Validate(ctx context.Context, rawToken string) (*UserCla
 	// Keycloak sends groups with a leading "/" (e.g. "/team-data"); normalise to bare names.
 	groups := make([]string, 0, len(raw.Groups))
 	for _, g := range raw.Groups {
-		groups = append(groups, strings.TrimLeft(g, "/"))
+		groups = append(groups, strings.TrimLeft(string(g), "/"))
 	}
 
 	return &UserClaims{

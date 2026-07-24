@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-07-24
+
+### Fixed
+- OIDC token claims parsing failed outright (breaking login/Bearer auth entirely) whenever a Keycloak `groups` claim contained group objects (e.g. `{"name": "...", "path": "..."}`) instead of plain strings — some Keycloak deployments use a custom mapper that emits the full `GroupRepresentation` rather than just the name. `internal/oidc/validator.go` now accepts either shape via a custom `groupClaim` JSON unmarshaler, extracting `.name` when given an object.
+
 ## [0.8.1] — 2026-07-21
 
 ### Changed
