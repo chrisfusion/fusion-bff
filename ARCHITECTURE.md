@@ -6,10 +6,11 @@
 
 1. Run the OIDC PKCE login flow and maintain server-side sessions (HttpOnly cookie)
 2. Resolve user identity to roles and permissions via the RBAC engine
-3. Enforce route-level permission checks on all `/api/*` requests
+3. Enforce route-level (and resource-scoped) permission checks on all `/api/*` requests
 4. Replace the inbound session cookie / Bearer token with the BFF's own K8s service account token
 5. Forward the resolved user identity as trusted headers
 6. Expose an admin API for managing group→role assignments and resource-scoped permission grants
+7. Serve its own auxiliary APIs to the frontend: infrastructure presets (`/bff/presets`), aggregated live upstream health (`/bff/system-health`), and its OpenAPI spec / Swagger UI (`/bff/openapi.yaml`, `/bff/docs`)
 
 ---
 
@@ -22,6 +23,7 @@
 │  cmd/server/main.go                                              │
 │    └─ config.Load()              reads env vars                  │
 │    └─ rbac.LoadConfig()          loads rbac.yaml                 │
+│    └─ presets.LoadConfig()       loads presets.yaml (optional)   │
 │    └─ if OIDCBypass:                                             │
 │         mockoidc.New()           RSA key + mock server           │
 │         mockoidc.Validator()     in-process JWT verifier         │
@@ -29,29 +31,46 @@
 │       else:                                                      │
 │         oidc.NewValidator()      JWKS-backed JWT verifier        │
 │         allowlist.New()          in-memory sub/email checker     │
-│    └─ db.Open() + db.Migrate()   if group_source != jwt          │
+│    └─ db.Open()                  whenever DB_DSN != ""           │
+│         db.Migrate()             if group_source != jwt          │
+│         (also backs system-health service_status_overrides)     │
 │    └─ rbac.NewEngine(cfg, pool)  picks GroupRoleStore            │
 │    └─ token.NewFileProvider() ×2 (saToken, weaveSAToken)        │
-│    └─ proxy.NewUpstreamProxy() ×3  (forge, index, weave)        │
+│    └─ proxy.NewUpstreamProxy() ×4  (forge, index, weave, content)│
+│    └─ handler.NewSystemHealthHandler(pool, ...)  nil pool → degrades│
+│    └─ handler.NewPresetsHandler(presetsCfg)                      │
 │    └─ api.NewRouter()            gin engine                      │
 │    └─ http.Server.ListenAndServe()                               │
 │                                                                  │
 │  internal/api/router.go                                          │
 │    /health  /livez  /readyz     → handler.Health (no auth)      │
+│    /bff/openapi.yaml|docs       → docs.SpecHandler/UIHandler     │
+│                                    (no auth)                     │
 │    /bff/login|callback|logout   → handler.Auth (PKCE flow)      │
 │    /bff/userinfo                → handler.Auth (session read)   │
-│    /bff/admin/*                 → middleware.RequirePermission   │
-│                                   + handler.Admin               │
+│    /bff/admin/*                 → middleware.SessionAuth         │
+│                                   ("admin:roles:manage" group)   │
+│                                   + handler.Admin/ResourcePerm   │
+│    /bff/presets                 → middleware.SessionAuth         │
+│                                   ("bff:presets:read")           │
+│                                   + handler.Presets              │
+│    /bff/system-health           → middleware.SessionAuth (any)   │
+│    /bff/admin/service-status    → middleware.SessionAuth         │
+│                                   ("admin:health:manage" group)  │
+│                                   + handler.SystemHealth         │
 │    /api/forge/*path             → middleware.APIAuth → forge     │
 │    /api/index/*path             → middleware.APIAuth → index     │
 │    /api/weave/*path             → middleware.APIAuth → weave     │
+│    /api/content/*path           → middleware.APIAuth → content   │
 │                                                                  │
 │  internal/api/middleware/apiauth.go                              │
 │    1. sid cookie present? → session.Store.Get() → Session        │
 │       (refresh access token if within 30 s of expiry)           │
 │    2. No session? → fall back to Bearer <OIDC JWT>              │
-│    3. rbac.RoutePermission(rules, method, path)                  │
-│       → 403 if required permission not in session.Permissions   │
+│    3. rbac.MatchRoute(rules, method, path)                       │
+│       → captures required permission + resource type/ID          │
+│       → 403 unless permission ∈ session.Permissions, or          │
+│         resource-scoped grant matches ResourcePermissions        │
 │    4. proxy.SetUserContext(r, sub, email)                        │
 │                                                                  │
 │  internal/rbac/engine.go                                         │
@@ -65,14 +84,14 @@
 │                                                                  │
 │  internal/proxy/upstream.go                                      │
 │    Handler()  pre-fetches SA token, stores in ctx               │
-│    Rewrite()  strips /api/{forge|index|weave} prefix            │
+│    Rewrite()  strips /api/{forge|index|weave|content} prefix    │
 │               deletes inbound X-User-ID / X-User-Email          │
 │               sets Authorization: Bearer <SA token>             │
 │               sets X-User-ID / X-User-Email from ctx            │
 └──────────────────────────────────────────────────────────────────┘
-          │               │               │
-          ▼               ▼               ▼
-  fusion-forge:8080  fusion-index-  fusion-weave-api:8082
+          │               │               │               │
+          ▼               ▼               ▼               ▼
+  fusion-forge:8080  fusion-index-  fusion-weave-api:8082  fusion-content:8080
 ```
 
 ---
@@ -88,10 +107,11 @@ GUI
 middleware.APIAuth
  ├─ session.Store.Get(sid)        → Session{ Sub, Roles, Permissions, ... }
  │    └─ token refresh if near expiry
- ├─ rbac.RoutePermission(rules, GET, /api/index/.../artifacts)
- │    → required: "index:artifacts:read"
+ ├─ rbac.MatchRoute(rules, GET, /api/index/.../artifacts)
+ │    → required: "index:artifacts:read" (+ ResourceType/ResourceID if the rule has one)
  ├─ "index:artifacts:read" ∈ session.Permissions?
- │    yes → continue   /   no → 403
+ │    yes → continue
+ │    no  → resource-scoped grant for this ResourceID? yes → continue / no → 403
  └─ proxy.SetUserContext(r, sub, email)
  │
  ▼
@@ -151,7 +171,9 @@ These are resolved at login and embedded in the `userinfo` response as `resource
 index:artifacts:read      index:artifacts:write    index:artifacts:delete
 index:versions:write      index:versions:delete    index:types:manage
 forge:builds:read         forge:builds:create
-admin:users:view          admin:roles:manage
+content:changelog:read    content:help:read        content:videos:read
+bff:presets:read
+admin:users:view          admin:roles:manage       admin:health:manage
 ```
 
 ---
@@ -174,7 +196,12 @@ internal/
   token/
     provider.go      Provider interface, FileProvider with RWMutex double-check
   proxy/
-    upstream.go      UpstreamProxy (shared by forge, index, weave), SetUserContext
+    upstream.go      UpstreamProxy (shared by forge, index, weave, content), SetUserContext
+  presets/
+    presets.go       Config{Kafka, Secrets}, LoadConfig — presets.yaml is optional
+  docs/
+    docs.go          SpecHandler (/bff/openapi.yaml), UIHandler (/bff/docs Swagger UI)
+    openapi.yaml      Full OpenAPI spec — one path item per proxied upstream endpoint
   session/
     session.go       Session{Sub,Email,Name,Roles,Permissions,ResourcePermissions}, InMemoryStore
   rbac/
@@ -184,17 +211,21 @@ internal/
     static_store.go  StaticGroupRoleStore (rbac.yaml)
     db_store.go      DBGroupRoleStore (postgres)
     merged_store.go  MergedGroupRoleStore (both)
-    route.go         RoutePermission — first-match rule evaluation
+    route.go         MatchRoute — first-match rule evaluation, captures ResourceID; RoutePermission is a thin wrapper
   db/
-    db.go            Open + Migrate (group_role_assignments, resource_permissions tables)
-    queries.go       CRUD for both tables + LoadAllGroupRoles
+    db.go            Open + Migrate (group_role_assignments, resource_permissions, service_status_overrides tables)
+    queries.go       CRUD for all three tables + LoadAllGroupRoles, LoadResourcePermsForUser, ListServiceStatuses
   api/
     handler/
       health.go      /health /livez /readyz
       auth.go        /bff/login, /bff/callback, /bff/logout, /bff/userinfo
-      admin.go       /bff/admin/group-roles, /bff/admin/resource-permissions, /bff/admin/rbac-config
+      admin.go       /bff/admin/group-roles, /bff/admin/rbac-config
+      resource_permissions.go  /bff/admin/resource-permissions
+      system_health.go /bff/system-health (all users); /bff/admin/service-status (admin:health:manage)
+      presets.go     /bff/presets (bff:presets:read)
     middleware/
       apiauth.go     /api/* — session cookie + Bearer fallback + route permission check
+      session_auth.go SessionAuth — cookie-only auth + permission check for /bff/admin/* and other bff/* routes
       cors.go        CORS middleware
       requestid.go   X-Request-ID propagation
     router.go        Gin route registration
@@ -232,6 +263,10 @@ The proxy `Rewrite` function receives `*httputil.ProxyRequest`, not a Gin contex
 
 Resource-scoped grants are small enough to embed in the `userinfo` response at login. No per-request DB lookup is needed in components — the frontend checks `auth.user.resource_permissions` locally.
 
+### DB pool is optional at the handler level
+
+The Postgres pool opens whenever `DB_DSN` is set, regardless of `group_source`. RBAC admin handlers only exist when `group_source` is `db`/`both`, but `SystemHealthHandler` is always constructed and guards every DB call with `if h.pool != nil` — with no DB configured it still serves live probe results, just without stored overrides.
+
 ---
 
 ## Security model
@@ -247,3 +282,4 @@ Resource-scoped grants are small enough to embed in the `userinfo` response at l
 | OIDC bypass misuse | `OIDC_BYPASS=true` prints a loud `[WARNING]` at startup; guard with Helm `required` in prod |
 | DB credentials in config | `DB_DSN` injected from a K8s Secret (chart-generated or ESO-managed); never stored in ConfigMap or `values.yaml` |
 | Container breakout | Distroless image, `readOnlyRootFilesystem: true`, runs as non-root |
+| Internal DNS leakage via health probes | `SystemHealthHandler` never returns `err.Error()` from a failed probe to the client (it can contain cluster-internal hostnames) — logs the real error server-side, returns a generic `"probe failed"` |

@@ -46,6 +46,7 @@ Follow `../logging_principles.md` exactly. Key rules:
 8. Add CHANGELOG entry before commit; consolidate same-session changes into one version bump. **RBAC-only additions (new permission + route rule, no Go code change) bump the patch version**, even though they're `### Added` — see 0.4.6, 0.4.7, 0.4.8, 0.5.1 for precedent.
 9. To verify the real root `rbac.yaml` parses (unit tests in `internal/rbac` use fixture YAML strings, not the live file): temporarily add a test calling `LoadConfig("../../rbac.yaml")`, run it, delete it.
 10. When bulk-editing `openapi.yaml` (or `rbac.yaml`) via a script: render to a string/temp file and verify success *before* overwriting the real file with `open(path, "w")` — a mid-dump error (e.g. an unrepresentable Python type) truncates the target to empty rather than failing safely. `git checkout -- <file>` recovers if this happens.
+11. New BFF-owned endpoints (e.g. `/bff/presets`, `/bff/system-health`, a new upstream proxy) also need README.md (Features table + Configuration), ARCHITECTURE.md (component map + package structure), and EXAMPLE.md (curl examples) updated — unlike rbac.yaml/openapi.yaml, nothing enforces this and they were found several releases stale as of 2026-07.
 
 ## Platform context
 
@@ -228,9 +229,10 @@ Same Flux + Helm pattern as fusion-forge:
 
 ## Local dev (minikube)
 - Always use semver image tags (`fusion-bff:X.Y.Z`) — never `latest` or `local`; bump on each deploy
+- No `.env.example` file exists in the repo — write `.env` directly (see README.md Quick start heredoc) rather than assuming a template file to copy.
 - Build inside minikube daemon: `eval $(minikube docker-env) && docker build -t fusion-bff:X.Y.Z .`
 - Dev Vite server: `POST_LOGIN_REDIRECT_URL=http://dev.fusion.local:5174`, `CORS_ORIGINS=http://dev.fusion.local:5174`
-- In-cluster spectra (bypass mode): `POST_LOGIN_REDIRECT_URL=http://spectra.fusion.local/`, `CORS_ORIGINS=http://spectra.fusion.local`, `SESSION_COOKIE_DOMAIN=auto` — see DEV.md for complete Helm commands
+- In-cluster spectra (bypass mode): `POST_LOGIN_REDIRECT_URL=http://spectra.fusion.local/`, `CORS_ORIGINS=http://spectra.fusion.local`, `SESSION_COOKIE_DOMAIN=auto`
 - Set `OIDC_BYPASS_GROUPS=platform-admin` (or comma-separated list) to pre-select groups on the mock login form
 - Upstream proxy (`internal/proxy/upstream.go`) strips CORS headers in `ModifyResponse` — prevents duplicate `Access-Control-Allow-Origin` when upstream also sets it
 - **Helm chart pre-flight for RBAC**: chart needs `OIDC_BYPASS_GROUPS` + `RBAC_CONFIG_PATH` in `configmap.yaml`, and a ConfigMap volume mounting `rbac.yaml` into the pod — see `TEST_PLAN_session1.md` section 0 for exact snippets
@@ -316,6 +318,8 @@ flux/                      # Flux GitOps (3 environments)
 Dockerfile
 Makefile
 ```
+
+INSTALL.md and DEV.md were removed (2026-07) — don't recreate or link to them; README.md/ARCHITECTURE.md/EXAMPLE.md are the maintained top-level docs.
 
 ## Changelog rule
 

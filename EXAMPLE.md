@@ -118,6 +118,34 @@ curl -s $BFF/readyz
 
 ---
 
+## API docs (no auth required)
+
+```bash
+curl -s $BFF/openapi.yaml | head -5
+
+open $BFF/docs   # Swagger UI
+```
+
+---
+
+## System health and presets (session cookie required)
+
+`GET /bff/system-health` is available to any authenticated user; it live-probes forge/index/weave/content and merges in any admin-set overrides.
+
+```bash
+curl -s -b /tmp/bff-cookies.txt $BFF/bff/system-health | jq .
+# {"services":[{"name":"forge","live":{"reachable":true,"status_code":200,"latency_ms":12},"override":null}, ...]}
+```
+
+`GET /bff/presets` requires `bff:presets:read` (granted to `admin`/`engineer` by default) and serves this unit's static infrastructure presets (Kafka clusters, secret names) for GUI creation wizards:
+
+```bash
+curl -s -b /tmp/bff-cookies.txt $BFF/bff/presets | jq .
+# {"kafka":[...],"secrets":[...]}
+```
+
+---
+
 ## Unauthenticated request → 401
 
 Any `/api/*` path without a token returns 401:
@@ -195,6 +223,23 @@ The BFF SA has `fusion-platform.io/role: admin`, so all CRUD operations includin
 
 ---
 
+## fusion-content examples
+
+fusion-content serves help articles, videos, and changelog data. Via the BFF it is accessed at `/api/content/api/v1/`; note that help and video reads require different permissions (`content:help:read` / `content:videos:read`) than everything else (`content:changelog:read`).
+
+```bash
+# List help articles
+curl -s -H "Authorization: Bearer $TOKEN" $BFF/api/content/api/v1/help | jq .
+
+# List videos
+curl -s -H "Authorization: Bearer $TOKEN" $BFF/api/content/api/v1/videos | jq .
+
+# Fetch changelog entries
+curl -s -H "Authorization: Bearer $TOKEN" $BFF/api/content/api/v1/changelog | jq .
+```
+
+---
+
 ## Inspect forwarded headers (debug with a mock upstream)
 
 Start a request-echo server in one terminal:
@@ -260,6 +305,7 @@ The BFF strips the `/api/<service>` prefix before forwarding:
 | `/api/forge/api/v1/venvs` | `/api/v1/venvs` on fusion-forge:8080 |
 | `/api/index/api/v1/artifacts` | `/api/v1/artifacts` on fusion-index-backend:8080 |
 | `/api/weave/api/v1/chains` | `/api/v1/chains` on fusion-weave-api:8082 |
+| `/api/content/api/v1/help` | `/api/v1/help` on fusion-content:8080 |
 
 ---
 
@@ -284,6 +330,6 @@ Example output:
 ```
 
 Key checks:
-- `aud` must contain `fusion-gui` (matching `OIDC_CLIENT_ID`) — if missing, add an audience mapper to the Keycloak client (see [INSTALL.md](INSTALL.md#keycloak-setup-minikube-example))
+- `aud` must contain `fusion-gui` (matching `OIDC_CLIENT_ID`) — if missing, add an `oidc-audience-mapper` protocol mapper to the Keycloak client (`config: {"included.client.audience":"fusion-gui","access.token.claim":"true"}`)
 - `iss` must match the BFF's `OIDC_ISSUER_URL` exactly — in minikube, fetch the token from inside the cluster (see above)
 - `exp` must be in the future — Keycloak's default access token TTL is 5 minutes
