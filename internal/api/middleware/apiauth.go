@@ -59,12 +59,18 @@ func APIAuth(
 					// Ignore update error — if the session was concurrently deleted,
 					// the next request will re-authenticate through the Bearer fallback.
 					_ = store.Update(sess)
+					LoggerFromCtx(c).Debug("apiauth: session token silently refreshed",
+						"sub", sess.Sub, "email", sess.Email, "name", sess.Name, "groups", sess.Groups)
 				}
 				if match.Permission != "" {
 					hasGlobal := slices.Contains(sess.Permissions, match.Permission)
 					hasScoped := match.ResourceType != "" &&
 						hasResourcePerm(sess.ResourcePermissions, match.Permission, match.ResourceType, match.ResourceID)
 					if !hasGlobal && !hasScoped {
+						LoggerFromCtx(c).Warn("apiauth: permission denied",
+							"sub", sess.Sub, "email", sess.Email, "name", sess.Name, "groups", sess.Groups,
+							"method", c.Request.Method, "path", c.Request.URL.Path,
+							"required_permission", match.Permission)
 						c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 						return
 					}
@@ -90,7 +96,8 @@ func APIAuth(
 			return
 		}
 		if !checker.Permitted(claims.Subject, claims.Email) {
-			LoggerFromCtx(c).Debug("user not on allowlist", "sub", claims.Subject, "email", claims.Email)
+			LoggerFromCtx(c).Warn("apiauth: bearer user not on allowlist",
+				"sub", claims.Subject, "email", claims.Email, "name", claims.Name, "groups", claims.Groups)
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
@@ -112,10 +119,18 @@ func APIAuth(
 					return
 				}
 				if !hasResourcePerm(resourcePerms, match.Permission, match.ResourceType, match.ResourceID) {
+					LoggerFromCtx(c).Warn("apiauth: bearer permission denied",
+						"sub", claims.Subject, "email", claims.Email, "name", claims.Name, "groups", claims.Groups,
+						"method", c.Request.Method, "path", c.Request.URL.Path,
+						"required_permission", match.Permission)
 					c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 					return
 				}
 			} else if !hasGlobal {
+				LoggerFromCtx(c).Warn("apiauth: bearer permission denied",
+					"sub", claims.Subject, "email", claims.Email, "name", claims.Name, "groups", claims.Groups,
+					"method", c.Request.Method, "path", c.Request.URL.Path,
+					"required_permission", match.Permission)
 				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 				return
 			}

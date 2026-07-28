@@ -2,8 +2,10 @@ package db
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -47,12 +49,20 @@ func CreateGroupRole(ctx context.Context, pool *pgxpool.Pool, group, role, creat
 	return r, err
 }
 
-func DeleteGroupRole(ctx context.Context, pool *pgxpool.Pool, id int) (bool, error) {
-	tag, err := pool.Exec(ctx, `DELETE FROM group_role_assignments WHERE id = $1`, id)
+// DeleteGroupRole deletes the assignment and returns its group/role names for
+// audit logging. found is false (with zero-value row) when no row matched id.
+func DeleteGroupRole(ctx context.Context, pool *pgxpool.Pool, id int) (row GroupRoleRow, found bool, err error) {
+	err = pool.QueryRow(ctx,
+		`DELETE FROM group_role_assignments WHERE id = $1 RETURNING id, group_name, role_name, created_by, created_at`,
+		id,
+	).Scan(&row.ID, &row.GroupName, &row.RoleName, &row.CreatedBy, &row.CreatedAt)
 	if err != nil {
-		return false, err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return GroupRoleRow{}, false, nil
+		}
+		return GroupRoleRow{}, false, err
 	}
-	return tag.RowsAffected() > 0, nil
+	return row, true, nil
 }
 
 // LoadAllGroupRoles returns a map[group_name][]role_name for use in DBGroupRoleStore.
@@ -124,12 +134,22 @@ func CreateResourcePerm(ctx context.Context, pool *pgxpool.Pool,
 	return r, err
 }
 
-func DeleteResourcePerm(ctx context.Context, pool *pgxpool.Pool, id int) (bool, error) {
-	tag, err := pool.Exec(ctx, `DELETE FROM resource_permissions WHERE id = $1`, id)
+// DeleteResourcePerm deletes the grant and returns its details for audit logging.
+// found is false (with zero-value row) when no row matched id.
+func DeleteResourcePerm(ctx context.Context, pool *pgxpool.Pool, id int) (row ResourcePermRow, found bool, err error) {
+	err = pool.QueryRow(ctx,
+		`DELETE FROM resource_permissions WHERE id = $1
+		 RETURNING id, subject_type, subject, permission, resource_type, resource_id, created_by, created_at`,
+		id,
+	).Scan(&row.ID, &row.SubjectType, &row.Subject, &row.Permission,
+		&row.ResourceType, &row.ResourceID, &row.CreatedBy, &row.CreatedAt)
 	if err != nil {
-		return false, err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ResourcePermRow{}, false, nil
+		}
+		return ResourcePermRow{}, false, err
 	}
-	return tag.RowsAffected() > 0, nil
+	return row, true, nil
 }
 
 // ── Service status overrides ──────────────────────────────────────────────────

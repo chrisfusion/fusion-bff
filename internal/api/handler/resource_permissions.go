@@ -11,7 +11,6 @@ import (
 
 	"github.com/fusion-platform/fusion-bff/internal/api/middleware"
 	"github.com/fusion-platform/fusion-bff/internal/db"
-	"github.com/fusion-platform/fusion-bff/internal/session"
 )
 
 // ResourcePermHandler handles CRUD for resource-scoped permission grants.
@@ -55,15 +54,10 @@ func (h *ResourcePermHandler) Create(c *gin.Context) {
 		return
 	}
 
-	createdBy := ""
-	if raw, ok := c.Get(middleware.CtxKeySession); ok {
-		if sess, ok := raw.(*session.Session); ok {
-			createdBy = sess.Sub
-		}
-	}
+	act := actorFromCtx(c)
 
 	row, err := db.CreateResourcePerm(c.Request.Context(), h.pool,
-		body.SubjectType, body.Subject, body.Permission, body.ResourceType, body.ResourceID, createdBy)
+		body.SubjectType, body.Subject, body.Permission, body.ResourceType, body.ResourceID, act.sub)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -73,6 +67,10 @@ func (h *ResourcePermHandler) Create(c *gin.Context) {
 		internalError(c, err)
 		return
 	}
+	middleware.LoggerFromCtx(c).Info("admin: resource permission granted",
+		"actor", act.sub, "actor_name", act.name, "actor_groups", act.groups,
+		"subject_type", row.SubjectType, "subject", row.Subject, "permission", row.Permission,
+		"resource_type", row.ResourceType, "resource_id", row.ResourceID, "id", row.ID)
 	c.JSON(http.StatusCreated, row)
 }
 
@@ -83,7 +81,7 @@ func (h *ResourcePermHandler) Delete(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
-	found, err := db.DeleteResourcePerm(c.Request.Context(), h.pool, id)
+	row, found, err := db.DeleteResourcePerm(c.Request.Context(), h.pool, id)
 	if err != nil {
 		internalError(c, err)
 		return
@@ -92,5 +90,11 @@ func (h *ResourcePermHandler) Delete(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}
+	act := actorFromCtx(c)
+	middleware.LoggerFromCtx(c).Info("admin: resource permission revoked",
+		"actor", act.sub, "actor_name", act.name, "actor_groups", act.groups,
+		"subject_type", row.SubjectType, "subject", row.Subject, "permission", row.Permission,
+		"resource_type", row.ResourceType, "resource_id", row.ResourceID, "id", row.ID,
+		"originally_created_by", row.CreatedBy, "originally_created_at", row.CreatedAt)
 	c.Status(http.StatusNoContent)
 }

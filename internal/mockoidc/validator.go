@@ -58,10 +58,15 @@ func (v *mockValidator) Validate(_ context.Context, rawToken string) (*oidcpkg.U
 		return nil, fmt.Errorf("token expired")
 	}
 
+	groups := claims.Groups
+	if groups == nil {
+		groups = []string{}
+	}
+
 	return &oidcpkg.UserClaims{
 		Subject: claims.Sub,
 		Email:   claims.Email,
 		Name:    claims.Name,
-		Groups:  claims.Groups,
+		Groups:  groups,
 	}, nil
 }

@@ -25,6 +25,7 @@ type Session struct {
 	Sub                 string
 	Email               string
 	Name                string
+	Groups              []string // JWT groups claim at login time — kept for diagnostic logging only
 	Roles               []string
 	Permissions         []string
 	ResourcePermissions []ResourcePermission

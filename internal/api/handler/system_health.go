@@ -13,7 +13,6 @@ import (
 
 	"github.com/fusion-platform/fusion-bff/internal/api/middleware"
 	"github.com/fusion-platform/fusion-bff/internal/db"
-	"github.com/fusion-platform/fusion-bff/internal/session"
 )
 
 var validServiceStatuses = map[string]bool{
@@ -184,18 +183,16 @@ func (h *SystemHealthHandler) UpsertOverride(c *gin.Context) {
 		return
 	}
 
-	updatedBy := ""
-	if raw, ok := c.Get(middleware.CtxKeySession); ok {
-		if sess, ok := raw.(*session.Session); ok {
-			updatedBy = sess.Sub
-		}
-	}
+	act := actorFromCtx(c)
 
-	row, err := db.UpsertServiceStatus(c.Request.Context(), h.pool, service, body.Status, body.Description, updatedBy)
+	row, err := db.UpsertServiceStatus(c.Request.Context(), h.pool, service, body.Status, body.Description, act.sub)
 	if err != nil {
 		internalError(c, err)
 		return
 	}
+	middleware.LoggerFromCtx(c).Info("admin: service status override set",
+		"actor", act.sub, "actor_name", act.name, "actor_groups", act.groups,
+		"service", service, "status", body.Status, "description", body.Description)
 	c.JSON(http.StatusOK, row)
 }
 
@@ -219,5 +216,8 @@ func (h *SystemHealthHandler) DeleteOverride(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}
+	act := actorFromCtx(c)
+	middleware.LoggerFromCtx(c).Info("admin: service status override cleared",
+		"actor", act.sub, "actor_name", act.name, "actor_groups", act.groups, "service", service)
 	c.Status(http.StatusNoContent)
 }

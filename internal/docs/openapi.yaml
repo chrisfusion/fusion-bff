@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, and fusion-content.
-  version: 0.8.1
+  version: 0.9.0
   license:
     name: GPL-3.0
 servers:

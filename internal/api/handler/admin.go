@@ -12,7 +12,6 @@ import (
 	"github.com/fusion-platform/fusion-bff/internal/api/middleware"
 	"github.com/fusion-platform/fusion-bff/internal/db"
 	"github.com/fusion-platform/fusion-bff/internal/rbac"
-	"github.com/fusion-platform/fusion-bff/internal/session"
 )
 
 // AdminHandler handles BFF-native admin API endpoints.
@@ -49,14 +48,9 @@ func (h *AdminHandler) CreateGroupRole(c *gin.Context) {
 		return
 	}
 
-	createdBy := ""
-	if raw, ok := c.Get(middleware.CtxKeySession); ok {
-		if sess, ok := raw.(*session.Session); ok {
-			createdBy = sess.Sub
-		}
-	}
+	act := actorFromCtx(c)
 
-	row, err := db.CreateGroupRole(c.Request.Context(), h.pool, body.Group, body.Role, createdBy)
+	row, err := db.CreateGroupRole(c.Request.Context(), h.pool, body.Group, body.Role, act.sub)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -66,6 +60,9 @@ func (h *AdminHandler) CreateGroupRole(c *gin.Context) {
 		internalError(c, err)
 		return
 	}
+	middleware.LoggerFromCtx(c).Info("admin: group-role assignment created",
+		"actor", act.sub, "actor_name", act.name, "actor_groups", act.groups,
+		"group", row.GroupName, "role", row.RoleName, "id", row.ID)
 	c.JSON(http.StatusCreated, row)
 }
 
@@ -88,7 +85,7 @@ func (h *AdminHandler) DeleteGroupRole(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
-	found, err := db.DeleteGroupRole(c.Request.Context(), h.pool, id)
+	row, found, err := db.DeleteGroupRole(c.Request.Context(), h.pool, id)
 	if err != nil {
 		internalError(c, err)
 		return
@@ -97,5 +94,10 @@ func (h *AdminHandler) DeleteGroupRole(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}
+	act := actorFromCtx(c)
+	middleware.LoggerFromCtx(c).Info("admin: group-role assignment deleted",
+		"actor", act.sub, "actor_name", act.name, "actor_groups", act.groups,
+		"group", row.GroupName, "role", row.RoleName, "id", row.ID,
+		"originally_created_by", row.CreatedBy, "originally_created_at", row.CreatedAt)
 	c.Status(http.StatusNoContent)
 }

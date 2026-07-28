@@ -7,6 +7,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-07-28
+
+### Added
+- Diagnostic and audit logging across the auth and admin surfaces, to make silent RBAC-resolution mismatches (e.g. a JWT `groups` claim value with no matching `group_role_assignments` row) visible in production logs instead of only showing up as an unexplained 403 downstream:
+  - `session.Session` gained a `Groups` field (the JWT `groups` claim captured at login), so it's available for logging beyond the login request itself.
+  - `POST /bff/login`: `Info` log on redirect to the OIDC provider.
+  - `GET /bff/callback`: `Warn` on allowlist rejection or RBAC resolve error (previously silent), `Warn` when a user authenticates but resolves to zero roles (the common "login works, everything after is forbidden" symptom), `Info` on successful login — all including `sub`, `email`, and `groups`.
+  - `POST /bff/logout`: `Info` with `sub`/`email`.
+  - `/api/*` (`APIAuth` middleware, both the session-cookie and Bearer-token paths): `Warn` on permission-denied (`sub`/`email`/`name`/`groups`/`method`/`path`/`required_permission`), `Debug` on silent session token refresh, allowlist rejection on the Bearer path bumped from `Debug` to `Warn`.
+  - `/bff/admin/group-roles`, `/bff/admin/resource-permissions`, `/bff/admin/service-status`: `Info` audit log on every create/delete/upsert, naming the acting admin (`actor`/`actor_name`/`actor_groups`) and the change made. `db.DeleteGroupRole` and `db.DeleteResourcePerm` now return the deleted row instead of just a bool so the delete-audit log can show what was removed.
+  - New shared `actorFromCtx(c)` helper in `internal/api/handler/helpers.go` reading the caller's identity off the session, replacing the repeated inline session-cast in each admin handler.
+
 ## [0.8.2] — 2026-07-24
 
 ### Fixed

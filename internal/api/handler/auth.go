@@ -88,6 +88,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	verifier := oauth2.GenerateVerifier()
 	h.store.SavePending(state, verifier)
 	authURL := h.oauth2Cfg.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
+	middleware.LoggerFromCtx(c).Info("login: redirecting to OIDC provider", "state", state)
 	c.Redirect(http.StatusFound, authURL)
 }
 
@@ -129,6 +130,8 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 	}
 
 	if !h.checker.Permitted(claims.Subject, claims.Email) {
+		middleware.LoggerFromCtx(c).Warn("callback: user not on allowlist",
+			"sub", claims.Subject, "email", claims.Email, "groups", claims.Groups)
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -136,8 +139,15 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 	roles, permissions, err := h.engine.Resolve(c.Request.Context(), claims.Subject, claims.Groups)
 	if err != nil {
 		// Non-fatal: user gets no roles/permissions but can still log in.
-		middleware.LoggerFromCtx(c).Warn("callback: rbac resolve", "error", err)
+		middleware.LoggerFromCtx(c).Warn("callback: rbac resolve",
+			"sub", claims.Subject, "email", claims.Email, "groups", claims.Groups, "error", err)
 		roles, permissions = nil, nil
+	} else if len(roles) == 0 {
+		// The user authenticated but no group_role_assignments / group_roles entry matched
+		// any of their JWT groups, so they'll have zero permissions. Log the exact groups
+		// the token carried so a mismatch (wrong claim, wrong name, missing DB row) is visible.
+		middleware.LoggerFromCtx(c).Warn("callback: no roles resolved for user",
+			"sub", claims.Subject, "email", claims.Email, "groups", claims.Groups)
 	}
 
 	resourcePerms, err := h.engine.ResolveResourcePermissions(c.Request.Context(), claims.Subject, claims.Groups, roles)
@@ -150,6 +160,7 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 		Sub:                 claims.Subject,
 		Email:               claims.Email,
 		Name:                claims.Name,
+		Groups:              claims.Groups,
 		Roles:               roles,
 		Permissions:         permissions,
 		ResourcePermissions: resourcePerms,
@@ -166,6 +177,8 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 	}
 
 	h.setSessionCookie(c, sid)
+	middleware.LoggerFromCtx(c).Info("callback: login succeeded",
+		"sub", claims.Subject, "email", claims.Email, "groups", claims.Groups, "roles", roles)
 	c.Redirect(http.StatusFound, h.postLoginRedirectURL)
 }
 
@@ -181,6 +194,12 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	sess, serr := h.store.Get(sid)
 	h.store.Delete(sid)
 	h.clearSessionCookie(c)
+
+	if serr == nil {
+		middleware.LoggerFromCtx(c).Info("logout", "sub", sess.Sub, "email", sess.Email)
+	} else {
+		middleware.LoggerFromCtx(c).Info("logout: session already gone")
+	}
 
 	if serr == nil && sess.RefreshToken != "" {
 		h.revokeRefreshToken(middleware.LoggerFromCtx(c), sess.RefreshToken)
