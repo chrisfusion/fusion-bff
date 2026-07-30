@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-07-31
+
+### Added
+- Documented fusion-forge's new app-build `metadata.yaml` `files` key in `internal/docs/openapi.yaml`: `ForgeBuildResponse` gained `fileUploadMode` (`legacy`/`auto`/`list`) and `files` (populated only in `list` mode), and the `POST /api/forge/api/v1/appbuilds` description now mentions `files` alongside `name`/`version`/`builderImage`/`runner` as metadata.yaml-derived, not caller-supplied. Field-only addition on an already-covered route (`forge:builds:create`/`forge:builds:read`) — no RBAC or router change, since the proxy forwards the JSON body unmodified.
+
 ## [0.9.0] — 2026-07-28
 
 ### Added

@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, and fusion-content.
-  version: 0.9.0
+  version: 0.10.0
   license:
     name: GPL-3.0
 servers:
@@ -903,7 +903,8 @@ paths:
       - forge
       summary: Trigger an app build from a git repository
       description: |
-        name, version, builderImage, and runner are read server-side from the repo's metadata.yaml, not supplied by the caller.
+        name, version, builderImage, runner, and files are read server-side from the repo's metadata.yaml, not supplied by the caller.
+        files (absent/`[]`/populated in metadata.yaml) controls which loose Python files get uploaded — see ForgeBuildResponse.fileUploadMode.
       x-required-permission: forge:builds:create
       requestBody:
         required: true
@@ -3322,6 +3323,19 @@ components:
         baseDependenciesUrl:
           type: string
           nullable: true
+        fileUploadMode:
+          type: string
+          nullable: true
+          description: |
+            App builds only. legacy | auto | list — derived from metadata.yaml's `files` key.
+            legacy: main.py is the only uploaded file (metadata.yaml has no `files` key).
+            auto: every top-level *.py file was auto-discovered and uploaded (`files: []`).
+            list: exactly the files named in `files` (below) were uploaded.
+        files:
+          type: array
+          items:
+            type: string
+          description: App builds only, and only populated when fileUploadMode is "list".
         createdAt:
           type: string
           format: date-time
