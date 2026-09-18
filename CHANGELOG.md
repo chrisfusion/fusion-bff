@@ -7,6 +7,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-09-18
+
+### Added
+- Documented fusion-weave's new external-auth mechanism in `internal/docs/openapi.yaml`: `WeaveChainSpec.externalAuthRef` (new `WeaveExternalAuthRef` schema, `mode: serviceAccount|oidc` + `name`) names a deploy-time-allowlisted ServiceAccount or Keycloak OIDC client that the operator mints a short-lived token for per job-creation attempt, mounted as a file into Job-kind step pods without the job's own code ever seeing the underlying credential. Overridable via `WeaveTriggerSpec.externalAuthRefOverride`/`WeaveRunSpec.externalAuthRefOverride`, independent of and stackable with the existing `authSecretRef`.
+- Documented `WeaveChainSpec.unsafeEnvironmentInjector` (+ trigger/run overrides, default `true`) — governs whether `authSecretRef`/`externalAuthRef` are also injected as env vars on top of their now-unconditional file mounts.
+- Documented `WeaveTriggerStatus.inactiveReason`/`.quarantined`/`.quarantineReason`/`.quarantinedAt` — a trigger's activation-source goroutine now recovers from a panic instead of crashing the operator, and reflects that as `status.quarantined=true`, distinct from the user-controlled `spec.paused`.
+- The `externalAuthRef`/`unsafeEnvironmentInjector` field additions above are field-only additions on chain/trigger/run resources already covered by the existing `weave:chains:write`/`weave:triggers:write`/`weave:runs:write` route rules — no RBAC or router change needed.
+- Documented fusion-weave's new `GET /api/weave/api/v1/external-auth/options` (new `WeaveExternalAuthOptions` schema: `serviceAccounts`/`oidcSecrets` string arrays) in `internal/docs/openapi.yaml` — reports the deploy-time allowlists so a GUI can populate a name picker for `externalAuthRef.name` per mode. Read-only and already covered by the generic `GET /api/weave/*` catch-all (`weave:resources:read`) — no RBAC or router change needed.
+
 ## [0.10.0] — 2026-07-31
 
 ### Added

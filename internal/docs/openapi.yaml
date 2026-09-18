@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, and fusion-content.
-  version: 0.10.0
+  version: 0.10.1
   license:
     name: GPL-3.0
 servers:
@@ -2763,6 +2763,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WeaveError'
+  /api/weave/api/v1/external-auth/options:
+    get:
+      tags:
+      - weave
+      summary: List allowlisted names for externalAuthRef
+      description: |
+        Reports the deploy-time allowlists configured for WeaveExternalAuthRef —
+        ServiceAccount names valid for mode=serviceAccount and Secret names valid
+        for mode=oidc — so a GUI can populate a name picker for whichever mode the
+        user selects, instead of hardcoding or guessing valid values. Echoes the
+        operator's static config as-is (EXTERNAL_AUTH_SERVICE_ACCOUNTS/
+        EXTERNAL_AUTH_OIDC_SECRETS or the equivalent externalAuth.* Helm values) —
+        no cluster lookup, so an allowlisted name that doesn't exist yet still
+        appears here. Covered by the generic GET /api/weave/* catch-all
+        (weave:resources:read) — no dedicated permission.
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: Allowlisted names
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveExternalAuthOptions'
   /api/weave/monitor/v1/runs:
     get:
       tags:
@@ -4429,6 +4452,64 @@ components:
             fusion-runner Python KeycloakAuth helper) use to obtain access
             tokens. Overridable per-trigger (authSecretRefOverride) or
             per-run (authSecretRefOverride); precedence is run > trigger > chain.
+        externalAuthRef:
+          $ref: '#/components/schemas/WeaveExternalAuthRef'
+          description: >-
+            Optionally names a deploy-time-allowlisted external identity the
+            operator mints a short-lived token for and injects into every
+            Job-kind step pod of this chain (never Deploy-kind). Independent
+            of authSecretRef — both may be set together. Overridable
+            per-trigger (externalAuthRefOverride) or per-run
+            (externalAuthRefOverride); precedence is run > trigger > chain.
+        unsafeEnvironmentInjector:
+          type: boolean
+          nullable: true
+          default: true
+          description: >-
+            Controls whether authSecretRef and externalAuthRef are ALSO
+            injected as environment variables, on top of the always-unconditional
+            file mounts both mechanisms provide. Defaults to true when null, so
+            existing chains relying on authSecretRef's envFrom behavior are
+            unaffected. Overridable per-trigger
+            (unsafeEnvironmentInjectorOverride) or per-run
+            (unsafeEnvironmentInjectorOverride).
+    WeaveExternalAuthRef:
+      type: object
+      required:
+      - mode
+      - name
+      properties:
+        mode:
+          type: string
+          enum:
+          - serviceAccount
+          - oidc
+          description: >-
+            Selects which deploy-time allowlist name is validated against:
+            "serviceAccount" (helm externalAuth.serviceAccounts) or "oidc"
+            (helm externalAuth.oidcSecrets).
+        name:
+          type: string
+          minLength: 1
+          description: >-
+            Must match an entry in the allowlist for mode. For serviceAccount
+            mode this is the ServiceAccount name the operator mints a
+            TokenRequest token for. For oidc mode this is the name of the
+            Secret holding Keycloak client credentials the operator uses for
+            a client_credentials grant.
+    WeaveExternalAuthOptions:
+      type: object
+      properties:
+        serviceAccounts:
+          type: array
+          items:
+            type: string
+          description: Allowlisted ServiceAccount names for externalAuthRef mode=serviceAccount.
+        oidcSecrets:
+          type: array
+          items:
+            type: string
+          description: Allowlisted Secret names for externalAuthRef mode=oidc.
     WeaveActiveDeploymentStatus:
       type: object
       properties:
@@ -4589,6 +4670,20 @@ components:
             Overrides WeaveChainSpec.authSecretRef for every run created by
             this trigger. Takes precedence over the chain default; yields to
             WeaveRunSpec.authSecretRefOverride on the resulting run.
+        externalAuthRefOverride:
+          $ref: '#/components/schemas/WeaveExternalAuthRef'
+          description: >-
+            Overrides WeaveChainSpec.externalAuthRef for every run created by
+            this trigger. Takes precedence over the chain default; yields to
+            WeaveRunSpec.externalAuthRefOverride on the resulting run.
+        unsafeEnvironmentInjectorOverride:
+          type: boolean
+          nullable: true
+          description: >-
+            Overrides WeaveChainSpec.unsafeEnvironmentInjector for every run
+            created by this trigger. Takes precedence over the chain default;
+            yields to WeaveRunSpec.unsafeEnvironmentInjectorOverride on the
+            resulting run.
         parameterOverrides:
           type: array
           items:
@@ -4616,6 +4711,30 @@ components:
         batchJobErrors:
           type: integer
           description: BatchCron only
+        inactiveReason:
+          type: string
+          description: >-
+            Explains why active is false (e.g. chain not found or invalid).
+            Empty when active is true. Distinct from quarantineReason: this
+            reflects an ordinary, self-healing condition on the referenced
+            chain, not a system-recovered panic.
+        quarantined:
+          type: boolean
+          description: >-
+            True when the operator auto-disabled this trigger's activation
+            source (cron/batchCron/kafka goroutine) after recovering a panic,
+            to stop it from repeatedly failing. Distinct from spec.paused,
+            which is a user action. While true, the trigger's activation
+            source is unregistered and will not fire. Clear it by setting the
+            fusion-platform.io/reset annotation to "true".
+        quarantineReason:
+          type: string
+          description: Describes the panic that caused quarantine.
+        quarantinedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the trigger was quarantined.
     WeaveTrigger:
       type: object
       properties:
@@ -4728,6 +4847,18 @@ components:
             Overrides WeaveChainSpec.authSecretRef (and any
             WeaveTriggerSpec.authSecretRefOverride) for this run only.
             Injected via envFrom into every step pod of this run.
+        externalAuthRefOverride:
+          $ref: '#/components/schemas/WeaveExternalAuthRef'
+          description: >-
+            Overrides WeaveChainSpec.externalAuthRef (and any
+            WeaveTriggerSpec.externalAuthRefOverride) for this run only.
+        unsafeEnvironmentInjectorOverride:
+          type: boolean
+          nullable: true
+          description: >-
+            Overrides WeaveChainSpec.unsafeEnvironmentInjector (and any
+            WeaveTriggerSpec.unsafeEnvironmentInjectorOverride) for this run
+            only.
     WeaveRunStepStatus:
       type: object
       properties:
