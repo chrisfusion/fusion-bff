@@ -2,8 +2,8 @@ openapi: 3.0.3
 info:
   title: fusion-bff API
   description: |
-    Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, and fusion-content.
-  version: 0.10.1
+    Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, fusion-wizard, and fusion-content.
+  version: 0.11.0
   license:
     name: GPL-3.0
 servers:
@@ -28,14 +28,18 @@ tags:
     runs).
 - name: weave-monitoring
   description: Explicitly documented fusion-weave /monitor/v1 read-only endpoints.
+- name: wizard
+  description: Explicitly documented fusion-wizard proxy endpoints (definitions, runs, ledger resources).
+    fusion-wizard orchestrates multi-service provisioning across forge/index/weave as persistent,
+    rollback-able WizardRun CRDs.
 - name: content
   description: Explicitly documented fusion-content proxy endpoints (changelog, help, videos).
 - name: proxy
-  description: Fallback passthrough to fusion-forge, fusion-index, fusion-weave, and fusion-content for
-    any route not explicitly documented above (e.g. a newly added upstream endpoint not yet reflected
-    here). The BFF strips the /api/<service> prefix and forwards the remaining path verbatim; request/response
-    bodies match each upstream service's own API. RBAC permission required per route is defined in rbac.yaml
-    (route_permissions) and is not enumerated here.
+  description: Fallback passthrough to fusion-forge, fusion-index, fusion-weave, fusion-wizard, and
+    fusion-content for any route not explicitly documented above (e.g. a newly added upstream endpoint
+    not yet reflected here). The BFF strips the /api/<service> prefix and forwards the remaining path
+    verbatim; request/response bodies match each upstream service's own API. RBAC permission required
+    per route is defined in rbac.yaml (route_permissions) and is not enumerated here.
 paths:
   /health:
     get:
@@ -3017,6 +3021,278 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WeaveError'
+  /api/wizard/api/v1/definitions:
+    get:
+      tags:
+      - wizard
+      summary: List WizardDefinitions
+      description: |
+        Definitions are instance-agnostic recipes a run is created from. `valid`/`error` report
+        whether the definition would be rejected at run-creation time (e.g. a hand-edited definition
+        with a typo in its step order).
+      x-required-permission: wizard:definitions:read
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WizardDefinitionList'
+  /api/wizard/api/v1/definitions/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - wizard
+      summary: Get a WizardDefinition
+      x-required-permission: wizard:definitions:read
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WizardDefinition'
+        '404':
+          $ref: '#/components/responses/WizardNotFound'
+  /api/wizard/api/v1/runs:
+    get:
+      tags:
+      - wizard
+      summary: List WizardRuns
+      description: |
+        Sorted newest first. Supports `?definition=`, `?phase=` and `?createdBy=` filters, and
+        `?limit=` (default 100, max 500).
+      x-required-permission: wizard:runs:read
+      parameters:
+      - name: definition
+        in: query
+        schema:
+          type: string
+      - name: phase
+        in: query
+        schema:
+          type: string
+      - name: createdBy
+        in: query
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WizardRunView'
+                  total:
+                    type: integer
+    post:
+      tags:
+      - wizard
+      summary: Create a WizardRun
+      description: |
+        Validates the definition, parameters and step plan up front (the same checks the operator
+        would run later), so a client sees every problem in one 422 instead of watching an accepted
+        run fail. `name` is optional — generated from the definition name when omitted.
+      x-required-permission: wizard:runs:create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WizardCreateRunRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WizardRunView'
+        '400':
+          $ref: '#/components/responses/WizardBadRequest'
+        '409':
+          $ref: '#/components/responses/WizardConflict'
+        '422':
+          description: The definition or supplied parameters are invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WizardError'
+  /api/wizard/api/v1/runs/bulk-rollback:
+    post:
+      tags:
+      - wizard
+      summary: Roll back many runs at once
+      description: |
+        Requires a selector (`names` and/or `definition`) — an empty request is refused rather than
+        meaning "everything". Capped at 200 matched runs; narrow the selection if it matches more.
+        Rolling back a shared resource is safe by construction: the ledger only deletes it upstream
+        once the last referencing run is gone.
+      x-required-permission: wizard:runs:bulk-rollback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WizardBulkRollbackRequest'
+      responses:
+        '200':
+          description: Nothing newly accepted (all requested runs were already RolledBack, or all failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WizardBulkRollbackResponse'
+        '202':
+          description: At least one run's rollback was accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WizardBulkRollbackResponse'
+        '400':
+          $ref: '#/components/responses/WizardBadRequest'
+  /api/wizard/api/v1/runs/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - wizard
+      summary: Get a WizardRun
+      x-required-permission: wizard:runs:read
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WizardRunView'
+        '404':
+          $ref: '#/components/responses/WizardNotFound'
+    delete:
+      tags:
+      - wizard
+      summary: Delete a WizardRun
+      description: |
+        The operator's finalizer rolls everything the run provisioned back first, so a run that had
+        provisioned anything disappears asynchronously; the response reflects that with 202 and the
+        run's current (rolling-back) state. A run that had provisioned nothing yet disappears immediately (204).
+      x-required-permission: wizard:runs:delete
+      responses:
+        '202':
+          description: Deletion requested; rollback is in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WizardRunView'
+        '204':
+          description: Deleted immediately — nothing had been provisioned
+        '404':
+          $ref: '#/components/responses/WizardNotFound'
+  /api/wizard/api/v1/runs/{name}/retry:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      tags:
+      - wizard
+      summary: Retry a Failed run
+      description: Sets a one-shot retry annotation the operator consumes on its next reconcile.
+      x-required-permission: wizard:runs:retry
+      responses:
+        '202':
+          description: Retry requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WizardRunView'
+        '404':
+          $ref: '#/components/responses/WizardNotFound'
+        '409':
+          description: Only a Failed run can be retried
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WizardError'
+  /api/wizard/api/v1/runs/{name}/rollback:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      tags:
+      - wizard
+      summary: Roll back a run
+      description: |
+        Sets desiredState=RolledBack; idempotent (200 if the run was already RolledBack, 202 the
+        first time). The run object itself stays afterwards, as a record — deleting it is a separate call.
+      x-required-permission: wizard:runs:rollback
+      responses:
+        '200':
+          description: Already RolledBack
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WizardRunView'
+        '202':
+          description: Rollback requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WizardRunView'
+        '404':
+          $ref: '#/components/responses/WizardNotFound'
+  /api/wizard/api/v1/resources:
+    get:
+      tags:
+      - wizard
+      summary: List ledger entries
+      description: |
+        Read-only diagnostic view of the ledger: which upstream resources are wizard-tracked, whether
+        they're `managed` (eligible for deletion) and which run steps currently reference them —
+        answers "why wasn't this deleted?" for a shared resource. Supports `?service=` and `?kind=` filters.
+      x-required-permission: wizard:resources:read
+      parameters:
+      - name: service
+        in: query
+        schema:
+          type: string
+      - name: kind
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WizardResourceView'
   /api/content/api/v1/changelog:
     get:
       tags:
@@ -5166,6 +5442,260 @@ components:
             $ref: '#/components/schemas/VideoResponse'
         pagination:
           $ref: '#/components/schemas/ContentPagination'
+    WizardError:
+      type: object
+      description: Error shape shared across the platform's Go services (spectra reads `.error`).
+      properties:
+        error:
+          type: string
+        details:
+          type: array
+          items:
+            type: string
+    WizardParameter:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [string, number, boolean, stringList]
+          default: string
+        description:
+          type: string
+        required:
+          type: boolean
+        default: {}
+        pattern:
+          type: string
+    WizardStep:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [gitWatcher, waitBuild, tag, jobTemplate, chain, trigger]
+        forEach:
+          type: string
+          description: Expands this step once per item of a stringList parameter, e.g. "${params.entrypoints}".
+        params:
+          type: object
+          additionalProperties:
+            type: string
+    WizardDefinitionSpec:
+      type: object
+      required: [steps]
+      properties:
+        description:
+          type: string
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/WizardParameter'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WizardStep'
+    WizardDefinition:
+      type: object
+      description: What clients see of a WizardDefinition. `valid`/`error` are computed — a hand-edited definition can fail the same validation a run-creation would hit.
+      properties:
+        name:
+          type: string
+        generation:
+          type: integer
+        valid:
+          type: boolean
+        error:
+          type: string
+        spec:
+          $ref: '#/components/schemas/WizardDefinitionSpec'
+    WizardDefinitionList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WizardDefinition'
+    WizardCreateRunRequest:
+      type: object
+      required: [definition]
+      properties:
+        definition:
+          type: string
+        name:
+          type: string
+          description: DNS-1123 subdomain. Generated from the definition name when omitted.
+        parameters:
+          type: object
+          description: Keyed by parameter name; scalars are JSON strings/numbers/booleans, stringList values are JSON arrays of strings.
+          additionalProperties: {}
+    WizardManagedResourceRef:
+      type: object
+      required: [service, kind, name, disposition]
+      properties:
+        service:
+          type: string
+          enum: [forge, index, weave]
+        kind:
+          type: string
+        name:
+          type: string
+        externalID:
+          type: string
+        disposition:
+          type: string
+          enum: [Created, Adopted, FoundUnowned]
+    WizardRunStepStatus:
+      type: object
+      required: [key, name]
+      properties:
+        key:
+          type: string
+          description: Unique within the run — the step name, or "<name>/<item>" for forEach expansions.
+        name:
+          type: string
+        type:
+          type: string
+          enum: [gitWatcher, waitBuild, tag, jobTemplate, chain, trigger]
+        item:
+          type: string
+        phase:
+          type: string
+          enum: [Pending, Running, Succeeded, Failed, RolledBack, RollbackFailed]
+        message:
+          type: string
+        failures:
+          type: integer
+        outputs:
+          type: object
+          additionalProperties:
+            type: string
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/WizardManagedResourceRef'
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+    WizardRunStatus:
+      type: object
+      properties:
+        phase:
+          type: string
+          enum: [Pending, Running, Ready, Failed, RollingBack, RolledBack, RollbackFailed]
+        message:
+          type: string
+        observedGeneration:
+          type: integer
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WizardRunStepStatus'
+        conditions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+    WizardRunView:
+      type: object
+      description: What clients see of a WizardRun — the request, who made it, and observed status. The definition snapshot is left out (large, operator-only).
+      properties:
+        name:
+          type: string
+        definition:
+          type: string
+        desiredState:
+          type: string
+          enum: [Applied, RolledBack]
+        parameters:
+          type: object
+          additionalProperties: {}
+        createdBy:
+          type: string
+        createdByEmail:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        deleting:
+          type: boolean
+        status:
+          $ref: '#/components/schemas/WizardRunStatus'
+    WizardBulkRollbackRequest:
+      type: object
+      description: At least one of names/definition is required — an empty request is refused rather than meaning "everything".
+      properties:
+        names:
+          type: array
+          items:
+            type: string
+        definition:
+          type: string
+    WizardBulkRollbackFailure:
+      type: object
+      properties:
+        name:
+          type: string
+        error:
+          type: string
+    WizardBulkRollbackResponse:
+      type: object
+      properties:
+        accepted:
+          type: array
+          items:
+            type: string
+        failed:
+          type: array
+          items:
+            $ref: '#/components/schemas/WizardBulkRollbackFailure'
+    WizardResourceReference:
+      type: object
+      required: [run, step]
+      properties:
+        run:
+          type: string
+        step:
+          type: string
+    WizardResourceView:
+      type: object
+      description: One ledger entry — an upstream resource and every run step that references it. Read-only; mainly answers "why wasn't this deleted?" for a shared resource.
+      properties:
+        service:
+          type: string
+          enum: [forge, index, weave]
+        kind:
+          type: string
+        name:
+          type: string
+        externalID:
+          type: string
+        specHash:
+          type: string
+        managed:
+          type: boolean
+        terminating:
+          type: boolean
+        refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/WizardResourceReference'
+        createdAt:
+          type: string
+          format: date-time
   pathItems:
     proxy:
       parameters:
@@ -5305,3 +5835,21 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/WeaveError'
+    WizardBadRequest:
+      description: Invalid request body or query parameter
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WizardError'
+    WizardNotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WizardError'
+    WizardConflict:
+      description: A run with this name already exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WizardError'

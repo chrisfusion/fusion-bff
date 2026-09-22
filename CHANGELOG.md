@@ -7,6 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-09-22
+
+### Added
+- Wired up fusion-wizard as a fifth proxied upstream (`WIZARD_URL`, default `http://fusion-wizard-api.fusion.svc.cluster.local:8083`): `/api/wizard/*` → fusion-wizard's `/api/v1/definitions`, `/runs` (list/create/get/delete/retry/rollback/bulk-rollback) and `/resources` (ledger) endpoints. Reuses the BFF's own default SA token (`K8S_SA_TOKEN_PATH`, audience `fusion-bff`) rather than a dedicated one like weave's — fusion-wizard's `TokenReviewAuthenticator` only enforces a token audience when its own `AUTH_AUDIENCE` is set (default: unset), so no new projected-token volume was needed; fusion-wizard's `AUTH_ALLOWED_SA` must separately list this BFF's `<namespace>/<name>`.
+- New RBAC permissions in `rbac.yaml`/`deployment/rbac.yaml`: `wizard:definitions:read`, `wizard:runs:read`, `wizard:runs:create`, `wizard:runs:retry`, `wizard:runs:rollback`, `wizard:runs:delete`, `wizard:runs:bulk-rollback`, `wizard:resources:read`. Delete and bulk-rollback are admin-only (fusion-wizard itself defers creator/bulk-delete authorization to callers, per its CLAUDE.md); read/create/retry/rollback are also granted to `engineer`; read-only access is granted to `viewer`.
+- `GET /bff/system-health` now also probes fusion-wizard (`WIZARD_HEALTH_URL`, default `{WIZARD_URL}/healthz` — note the different path from the other services' `/health`); `wizard` is a valid `/bff/admin/service-status` override target.
+- Documented all 8 fusion-wizard endpoints in `internal/docs/openapi.yaml` (new `wizard` tag, `WizardDefinition`/`WizardRunView`/`WizardResourceView`/etc. schemas transcribed from `fusion-wizard`'s `api/v1alpha1` CRD types and `internal/apiserver` view types).
+- Helm chart: `config.wizardUrl`/`config.wizardHealthUrl` values render `WIZARD_URL`/`WIZARD_HEALTH_URL` into the ConfigMap.
+- README/ARCHITECTURE/EXAMPLE.md updated for the new upstream.
+
 ## [0.10.1] — 2026-09-18
 
 ### Added

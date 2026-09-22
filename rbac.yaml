@@ -42,6 +42,14 @@ role_permissions:
     - weave:runs:write
     - weave:runs:delete
     - weave:monitoring:read
+    - wizard:definitions:read
+    - wizard:runs:read
+    - wizard:runs:create
+    - wizard:runs:retry
+    - wizard:runs:rollback
+    - wizard:runs:delete
+    - wizard:runs:bulk-rollback
+    - wizard:resources:read
     - content:changelog:read
     - content:help:read
     - content:videos:read
@@ -71,6 +79,12 @@ role_permissions:
     - weave:steps:restart
     - weave:runs:write
     - weave:monitoring:read
+    - wizard:definitions:read
+    - wizard:runs:read
+    - wizard:runs:create
+    - wizard:runs:retry
+    - wizard:runs:rollback
+    - wizard:resources:read
     - content:changelog:read
     - content:help:read
     - content:videos:read
@@ -82,6 +96,9 @@ role_permissions:
     - forge:builds:read
     - weave:resources:read
     - weave:monitoring:read
+    - wizard:definitions:read
+    - wizard:runs:read
+    - wizard:resources:read
     - content:changelog:read
     - content:help:read
     - content:videos:read
@@ -152,6 +169,16 @@ route_permissions:
   - { method: POST,   path: /api/weave/api/v1/runs,                   permission: weave:runs:write }
   - { method: GET,    path: /api/weave/monitor/v1/*,                  permission: weave:monitoring:read }
   - { method: GET,    path: /api/weave/*,                             permission: weave:resources:read }
+  - { method: DELETE, path: /api/wizard/api/v1/runs/*,                permission: wizard:runs:delete }
+  - { method: POST,   path: /api/wizard/api/v1/runs/bulk-rollback,    permission: wizard:runs:bulk-rollback }
+  - { method: POST,   path: /api/wizard/api/v1/runs/*/retry,          permission: wizard:runs:retry }
+  - { method: POST,   path: /api/wizard/api/v1/runs/*/rollback,       permission: wizard:runs:rollback }
+  - { method: POST,   path: /api/wizard/api/v1/runs,                  permission: wizard:runs:create }
+  - { method: GET,    path: /api/wizard/api/v1/runs/*,                permission: wizard:runs:read }
+  - { method: GET,    path: /api/wizard/api/v1/runs,                  permission: wizard:runs:read }
+  - { method: GET,    path: /api/wizard/api/v1/definitions/*,         permission: wizard:definitions:read }
+  - { method: GET,    path: /api/wizard/api/v1/definitions,           permission: wizard:definitions:read }
+  - { method: GET,    path: /api/wizard/api/v1/resources,             permission: wizard:resources:read }
   - { method: GET,    path: /api/content/api/v1/help*,               permission: content:help:read }
   - { method: GET,    path: /api/content/api/v1/videos*,            permission: content:videos:read }
   - { method: GET,    path: /api/content/*,                          permission: content:changelog:read }

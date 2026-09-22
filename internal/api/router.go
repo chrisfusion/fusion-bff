@@ -28,6 +28,7 @@ func NewRouter(
 	forge   *proxy.UpstreamProxy,
 	index   *proxy.UpstreamProxy,
 	weave   *proxy.UpstreamProxy,
+	wizard  *proxy.UpstreamProxy,
 	content *proxy.UpstreamProxy,
 	adminH *handler.AdminHandler,
 	resourcePermH *handler.ResourcePermHandler,
@@ -84,6 +85,7 @@ func NewRouter(
 	api.Any("/forge/*path", forge.Handler())
 	api.Any("/index/*path", index.Handler())
 	api.Any("/weave/*path", weave.Handler())
+	api.Any("/wizard/*path", wizard.Handler())
 	api.Any("/content/*path", content.Handler())
 
 	return r

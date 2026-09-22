@@ -36,7 +36,9 @@
 │         (also backs system-health service_status_overrides)     │
 │    └─ rbac.NewEngine(cfg, pool)  picks GroupRoleStore            │
 │    └─ token.NewFileProvider() ×2 (saToken, weaveSAToken)        │
-│    └─ proxy.NewUpstreamProxy() ×4  (forge, index, weave, content)│
+│    └─ proxy.NewUpstreamProxy() ×5  (forge, index, weave, wizard, │
+│                                     content) — wizard reuses     │
+│                                     saToken, not a dedicated one │
 │    └─ handler.NewSystemHealthHandler(pool, ...)  nil pool → degrades│
 │    └─ handler.NewPresetsHandler(presetsCfg)                      │
 │    └─ api.NewRouter()            gin engine                      │
@@ -61,6 +63,7 @@
 │    /api/forge/*path             → middleware.APIAuth → forge     │
 │    /api/index/*path             → middleware.APIAuth → index     │
 │    /api/weave/*path             → middleware.APIAuth → weave     │
+│    /api/wizard/*path            → middleware.APIAuth → wizard    │
 │    /api/content/*path           → middleware.APIAuth → content   │
 │                                                                  │
 │  internal/api/middleware/apiauth.go                              │
@@ -84,14 +87,15 @@
 │                                                                  │
 │  internal/proxy/upstream.go                                      │
 │    Handler()  pre-fetches SA token, stores in ctx               │
-│    Rewrite()  strips /api/{forge|index|weave|content} prefix    │
-│               deletes inbound X-User-ID / X-User-Email          │
+│    Rewrite()  strips /api/{forge|index|weave|wizard|content}    │
+│               prefix; deletes inbound X-User-ID / X-User-Email  │
 │               sets Authorization: Bearer <SA token>             │
 │               sets X-User-ID / X-User-Email from ctx            │
 └──────────────────────────────────────────────────────────────────┘
-          │               │               │               │
-          ▼               ▼               ▼               ▼
-  fusion-forge:8080  fusion-index-  fusion-weave-api:8082  fusion-content:8080
+          │               │               │               │              │
+          ▼               ▼               ▼               ▼              ▼
+  fusion-forge:8080  fusion-index-  fusion-weave-api:8082  fusion-wizard-  fusion-content:8080
+                      backend:8080                          api:8083
 ```
 
 ---
@@ -196,7 +200,7 @@ internal/
   token/
     provider.go      Provider interface, FileProvider with RWMutex double-check
   proxy/
-    upstream.go      UpstreamProxy (shared by forge, index, weave, content), SetUserContext
+    upstream.go      UpstreamProxy (shared by forge, index, weave, wizard, content), SetUserContext
   presets/
     presets.go       Config{Kafka, Secrets}, LoadConfig — presets.yaml is optional
   docs/
@@ -246,10 +250,10 @@ flux/                Flux GitOps manifests (3 environments)
 
 | Volume | Audience | Used for |
 |---|---|---|
-| `sa-token` | `fusion-bff` | forge, index |
+| `sa-token` | `fusion-bff` | forge, index, wizard |
 | `weave-sa-token` | *(none)* | fusion-weave (TokenReview validates against kube-apiserver) |
 
-A projected token with `audience: fusion-bff` fails Kubernetes TokenReview — the API server validates against its own audiences. Omitting the audience makes it valid for TokenReview.
+A projected token with `audience: fusion-bff` fails Kubernetes TokenReview when the verifier itself requests a specific audience set — the API server only checks the audience overlap when the caller's `TokenReview.Spec.Audiences` is non-empty. weave's authenticator does request one, so its token must carry no custom audience. fusion-wizard's `TokenReviewAuthenticator` only sets `Spec.Audiences` when its own `AUTH_AUDIENCE` env var is configured (default: unset), so the shared `sa-token` (audience `fusion-bff`) authenticates against it without issue — but wizard's own `AUTH_ALLOWED_SA` must still separately list this BFF's `<namespace>/<name>`, and `AUTH_AUDIENCE` must stay unset (or be set to `fusion-bff`) for that to keep working.
 
 ### User identity via `context.Context`, not Gin context
 

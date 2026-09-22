@@ -94,6 +94,7 @@ func main() {
 		cfg.ForgeHealthURL,
 		cfg.IndexHealthURL,
 		cfg.WeaveHealthURL,
+		cfg.WizardHealthURL,
 		cfg.ContentHealthURL,
 		cfg.HealthProbeTimeout,
 	)
@@ -165,13 +166,21 @@ func main() {
 		slog.Error("weave proxy", "error", err)
 		os.Exit(1)
 	}
+	// wizard authenticates callers via K8s TokenReview against its own AUTH_ALLOWED_SA allowlist
+	// (no audience restriction by default), so the BFF's own default SA token works here — unlike
+	// weave, no separate projected token/audience is needed.
+	wizardProxy, err := proxy.NewUpstreamProxy(cfg.WizardURL, "/api/wizard", saToken)
+	if err != nil {
+		slog.Error("wizard proxy", "error", err)
+		os.Exit(1)
+	}
 	contentProxy, err := proxy.NewUpstreamProxy(cfg.ContentURL, "/api/content", saToken)
 	if err != nil {
 		slog.Error("content proxy", "error", err)
 		os.Exit(1)
 	}
 
-	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, contentProxy, adminH, resourcePermH, systemHealthH, presetsH)
+	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, wizardProxy, contentProxy, adminH, resourcePermH, systemHealthH, presetsH)
 	if mockOIDC != nil {
 		mockOIDC.RegisterRoutes(router)
 	}

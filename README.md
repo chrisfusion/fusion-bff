@@ -2,13 +2,13 @@
 
 Backend for Frontend for the [fusion platform](../README.md) GUI.
 
-`fusion-bff` sits between the Vue.js web GUI and the internal fusion platform services (`fusion-forge`, `fusion-index`, `fusion-weave`, `fusion-content`). It handles browser-based OIDC login (PKCE + session cookies), validates tokens, enforces a user allowlist, replaces the inbound credential with the BFF's own Kubernetes service account token, and forwards the resolved user identity as trusted headers.
+`fusion-bff` sits between the Vue.js web GUI and the internal fusion platform services (`fusion-forge`, `fusion-index`, `fusion-weave`, `fusion-wizard`, `fusion-content`). It handles browser-based OIDC login (PKCE + session cookies), validates tokens, enforces a user allowlist, replaces the inbound credential with the BFF's own Kubernetes service account token, and forwards the resolved user identity as trusted headers.
 
 ---
 
 ## Why this exists
 
-Direct calls from the GUI to `fusion-forge` / `fusion-index` / `fusion-weave` / `fusion-content` would require those services to validate OIDC JWTs from end-users, which complicates their auth model and exposes their internal endpoints. The BFF pattern centralises that concern:
+Direct calls from the GUI to `fusion-forge` / `fusion-index` / `fusion-weave` / `fusion-wizard` / `fusion-content` would require those services to validate OIDC JWTs from end-users, which complicates their auth model and exposes their internal endpoints. The BFF pattern centralises that concern:
 
 - **One OIDC integration point** — only the BFF trusts the OIDC provider
 - **Browser-safe auth** — PKCE login flow; tokens never touch the browser; session held server-side as an HttpOnly cookie
@@ -30,14 +30,14 @@ Pod-to-pod traffic (e.g. CI pipelines calling forge directly) bypasses the BFF e
 | User info | `GET /bff/userinfo` returns `{sub, email, name, roles, permissions, resource_permissions}` from the active session |
 | RBAC | Config-driven roles + permissions (`rbac.yaml`); route-level enforcement via `APIAuth` middleware; resource-scoped grants in PostgreSQL |
 | Admin API | `/bff/admin/group-roles` (CRUD), `/bff/admin/resource-permissions` (CRUD), `/bff/admin/rbac-config` (read) — require `admin:roles:manage` |
-| System health | `GET /bff/system-health` (any authenticated user) aggregates live probes of forge/index/weave/content; `/bff/admin/service-status` (CRUD overrides) requires `admin:health:manage` |
+| System health | `GET /bff/system-health` (any authenticated user) aggregates live probes of forge/index/weave/wizard/content; `/bff/admin/service-status` (CRUD overrides) requires `admin:health:manage` |
 | Presets API | `GET /bff/presets` serves static infrastructure presets (Kafka clusters, secret names) from an optional `presets.yaml`; requires `bff:presets:read` |
 | API docs | `GET /bff/openapi.yaml` (spec) and `GET /bff/docs` (Swagger UI) — no auth required |
 | OIDC JWT validation | RS256 signature check against JWKS; configurable cache TTL; Bearer fallback for service-to-service calls |
 | User allowlist | Match `sub` or `email` claim; empty list = any authenticated user |
 | Identity forwarding | `X-User-ID` (sub), `X-User-Email` injected on every upstream request |
 | SA token rotation | Reads K8s projected tokens from disk with configurable TTL cache |
-| Proxy routing | `/api/forge/*` → `fusion-forge`; `/api/index/*` → `fusion-index`; `/api/weave/*` → `fusion-weave`; `/api/content/*` → `fusion-content` |
+| Proxy routing | `/api/forge/*` → `fusion-forge`; `/api/index/*` → `fusion-index`; `/api/weave/*` → `fusion-weave`; `/api/wizard/*` → `fusion-wizard`; `/api/content/*` → `fusion-content` |
 | SA token isolation | Separate projected token per upstream; weave token has no audience restriction for K8s TokenReview compatibility |
 | CORS | Configurable allowed origins via `CORS_ORIGINS` |
 | Health endpoints | `/health`, `/livez`, `/readyz` — no auth required |
@@ -75,6 +75,7 @@ OIDC_BYPASS_BASE_URL=http://localhost:8080 \
 FORGE_URL=http://localhost:8081 \
 INDEX_URL=http://localhost:8082 \
 WEAVE_URL=http://localhost:8083 \
+WIZARD_URL=http://localhost:8085 \
 CONTENT_URL=http://localhost:8084 \
 K8S_SA_TOKEN_PATH=/tmp/sa-token \
 WEAVE_SA_TOKEN_PATH=/tmp/weave-sa-token \
@@ -168,8 +169,9 @@ When `OIDC_BYPASS=true`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRE
 | `FORGE_URL` | `http://fusion-forge.fusion.svc.cluster.local:8080` | fusion-forge base URL |
 | `INDEX_URL` | `http://fusion-index-backend.fusion.svc.cluster.local:8080` | fusion-index base URL |
 | `WEAVE_URL` | `http://fusion-weave-api.fusion.svc.cluster.local:8082` | fusion-weave API server base URL |
+| `WIZARD_URL` | `http://fusion-wizard-api.fusion.svc.cluster.local:8083` | fusion-wizard API server base URL (Service name follows fusion-wizard's own Helm release name — adjust if it isn't installed as release `fusion-wizard`) |
 | `CONTENT_URL` | `http://fusion-content.fusion.svc.cluster.local:8080` | fusion-content base URL |
-| `K8S_SA_TOKEN_PATH` | `/var/run/secrets/kubernetes.io/serviceaccount/token` | SA token for forge/index (audience: fusion-bff) |
+| `K8S_SA_TOKEN_PATH` | `/var/run/secrets/kubernetes.io/serviceaccount/token` | SA token for forge/index/wizard (audience: fusion-bff) — fusion-wizard's `AUTH_ALLOWED_SA` must list this BFF's `<namespace>/<name>` |
 | `WEAVE_SA_TOKEN_PATH` | `/var/run/secrets/fusion-bff/weave/token` | SA token for weave (no audience; required for K8s TokenReview) |
 | `SA_TOKEN_CACHE_TTL` | `5m` | Re-read SA tokens from disk after this interval |
 | `ALLOWLIST_CACHE_TTL` | `30s` | Per-result cache TTL (only relevant for custom DB-backed checkers) |
@@ -184,6 +186,7 @@ When `OIDC_BYPASS=true`, `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRE
 | `FORGE_HEALTH_URL` | `{FORGE_URL}/health` | Health probe URL for forge |
 | `INDEX_HEALTH_URL` | `{INDEX_URL}/health` | Health probe URL for index |
 | `WEAVE_HEALTH_URL` | `{WEAVE_URL}/health` | Health probe URL for weave |
+| `WIZARD_HEALTH_URL` | `{WIZARD_URL}/healthz` | Health probe URL for wizard (note the different path: `/healthz`, not `/health`) |
 | `CONTENT_HEALTH_URL` | `{CONTENT_URL}/q/health/ready` | Health probe URL for content (note the different path) |
 | `HEALTH_PROBE_TIMEOUT` | `5s` | Per-probe HTTP timeout |
 

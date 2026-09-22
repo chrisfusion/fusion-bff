@@ -130,7 +130,7 @@ open $BFF/docs   # Swagger UI
 
 ## System health and presets (session cookie required)
 
-`GET /bff/system-health` is available to any authenticated user; it live-probes forge/index/weave/content and merges in any admin-set overrides.
+`GET /bff/system-health` is available to any authenticated user; it live-probes forge/index/weave/wizard/content and merges in any admin-set overrides.
 
 ```bash
 curl -s -b /tmp/bff-cookies.txt $BFF/bff/system-health | jq .
@@ -223,6 +223,50 @@ The BFF SA has `fusion-platform.io/role: admin`, so all CRUD operations includin
 
 ---
 
+## fusion-wizard examples
+
+fusion-wizard orchestrates multi-service provisioning (a "wizard run" chains forge/index/weave steps together) as CRDs, exposed at `/api/v1/` on the wizard-api pod; via the BFF they are accessed at `/api/wizard/api/v1/`.
+
+```bash
+# List wizard definitions (the reusable recipes a run is created from)
+curl -s -H "Authorization: Bearer $TOKEN" $BFF/api/wizard/api/v1/definitions | jq '.items[].name'
+
+# Get a specific definition (its spec includes the parameter schema for a frontend form)
+curl -s -H "Authorization: Bearer $TOKEN" $BFF/api/wizard/api/v1/definitions/python-git-job | jq .
+
+# List runs, newest first
+curl -s -H "Authorization: Bearer $TOKEN" $BFF/api/wizard/api/v1/runs | jq '.items[] | {name, phase: .status.phase}'
+
+# Create a run from a definition
+curl -s -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  $BFF/api/wizard/api/v1/runs \
+  -d '{"definition":"python-git-job","parameters":{"repo":"simple-streamlit"}}' | jq .
+
+# Roll back a run (undoes every step it provisioned, in ledger-tracked order)
+curl -s -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  $BFF/api/wizard/api/v1/runs/python-git-job-abc12/rollback
+
+# Retry a Failed run
+curl -s -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  $BFF/api/wizard/api/v1/runs/python-git-job-abc12/retry
+
+# Delete a run (requires wizard:runs:delete — admin only by default; the operator rolls it back first)
+curl -s -X DELETE \
+  -H "Authorization: Bearer $TOKEN" \
+  $BFF/api/wizard/api/v1/runs/python-git-job-abc12
+
+# Inspect the ledger — which run(s) own a given upstream resource, and whether it's shared
+curl -s -H "Authorization: Bearer $TOKEN" $BFF/api/wizard/api/v1/resources | jq '.items[] | {service, kind, name, managed, refs}'
+```
+
+Rollback, retry and delete each need their own permission (`wizard:runs:rollback`/`:retry`/`:delete`); bulk rollback (`POST /runs/bulk-rollback`) and delete are admin-only in the default `rbac.yaml` — see [Configuration](README.md#configuration) and the `wizard:*` entries in `rbac.yaml`.
+
+---
+
 ## fusion-content examples
 
 fusion-content serves help articles, videos, and changelog data. Via the BFF it is accessed at `/api/content/api/v1/`; note that help and video reads require different permissions (`content:help:read` / `content:videos:read`) than everything else (`content:changelog:read`).
@@ -305,6 +349,7 @@ The BFF strips the `/api/<service>` prefix before forwarding:
 | `/api/forge/api/v1/venvs` | `/api/v1/venvs` on fusion-forge:8080 |
 | `/api/index/api/v1/artifacts` | `/api/v1/artifacts` on fusion-index-backend:8080 |
 | `/api/weave/api/v1/chains` | `/api/v1/chains` on fusion-weave-api:8082 |
+| `/api/wizard/api/v1/runs` | `/api/v1/runs` on fusion-wizard-api:8083 |
 | `/api/content/api/v1/help` | `/api/v1/help` on fusion-content:8080 |
 
 ---

@@ -43,6 +43,7 @@ var (
 	forgeCapture   capturedRequest
 	indexCapture   capturedRequest
 	weaveCapture   capturedRequest
+	wizardCapture  capturedRequest
 	contentCapture capturedRequest
 )
 
@@ -66,6 +67,9 @@ func TestMain(m *testing.M) {
 	weaveSrv := newUpstreamServerGlobal(&weaveCapture)
 	defer weaveSrv.Close()
 
+	wizardSrv := newUpstreamServerGlobal(&wizardCapture)
+	defer wizardSrv.Close()
+
 	contentSrv := newUpstreamServerGlobal(&contentCapture)
 	defer contentSrv.Close()
 
@@ -87,6 +91,7 @@ func TestMain(m *testing.M) {
 	os.Setenv("FORGE_URL", forgeSrv.URL)
 	os.Setenv("INDEX_URL", indexSrv.URL)
 	os.Setenv("WEAVE_URL", weaveSrv.URL)
+	os.Setenv("WIZARD_URL", wizardSrv.URL)
 	os.Setenv("CONTENT_URL", contentSrv.URL)
 	os.Setenv("K8S_SA_TOKEN_PATH", saFile.Name())
 	os.Setenv("WEAVE_SA_TOKEN_PATH", weaveSAFile.Name())
@@ -146,9 +151,10 @@ func TestMain(m *testing.M) {
 	forgeProxy, _ := proxy.NewUpstreamProxy(cfg.ForgeURL, "/api/forge", saToken)
 	indexProxy, _ := proxy.NewUpstreamProxy(cfg.IndexURL, "/api/index", saToken)
 	weaveProxy, _ := proxy.NewUpstreamProxy(cfg.WeaveURL, "/api/weave", weaveSAToken)
+	wizardProxy, _ := proxy.NewUpstreamProxy(cfg.WizardURL, "/api/wizard", saToken)
 	contentProxy, _ := proxy.NewUpstreamProxy(cfg.ContentURL, "/api/content", saToken)
 
-	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, contentProxy, nil, nil, nil, nil)
+	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, wizardProxy, contentProxy, nil, nil, nil, nil)
 	bffServer = httptest.NewServer(router)
 	defer bffServer.Close()
 
@@ -321,6 +327,38 @@ func TestWeaveSATokenIsolation(t *testing.T) {
 	}
 	if weaveAuth == forgeAuth {
 		t.Error("weave and forge must use separate SA tokens")
+	}
+}
+
+func TestWizardForward(t *testing.T) {
+	wizardCapture.reset()
+	tok := mintJWT(t, rsaKey, kid, validClaims(oidcSrv.URL, clientID, sub1, email1))
+	resp := doRequest(t, "GET", "/api/wizard/api/v1/runs", tok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	_, _, headers := wizardCapture.get()
+	if got := headers.Get("X-User-ID"); got != sub1 {
+		t.Errorf("X-User-ID: want %q, got %q", sub1, got)
+	}
+	if got := headers.Get("X-User-Email"); got != email1 {
+		t.Errorf("X-User-Email: want %q, got %q", email1, got)
+	}
+	if headers.Get("Authorization") == "Bearer "+tok {
+		t.Error("inbound JWT must not be forwarded to wizard")
+	}
+	if headers.Get("Authorization") == "" {
+		t.Error("SA token Authorization header must be set on upstream request")
+	}
+}
+
+func TestWizardPathStripping(t *testing.T) {
+	wizardCapture.reset()
+	tok := mintJWT(t, rsaKey, kid, validClaims(oidcSrv.URL, clientID, sub1, email1))
+	doRequest(t, "GET", "/api/wizard/api/v1/runs", tok)
+	_, path, _ := wizardCapture.get()
+	if path != "/api/v1/runs" {
+		t.Errorf("upstream path: want /api/v1/runs, got %q", path)
 	}
 }
 

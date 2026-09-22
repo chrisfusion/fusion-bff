@@ -23,7 +23,7 @@ var validServiceStatuses = map[string]bool{
 }
 
 var validServices = map[string]bool{
-	"forge": true, "index": true, "weave": true, "spectra": true, "content": true,
+	"forge": true, "index": true, "weave": true, "wizard": true, "spectra": true, "content": true,
 }
 
 type SystemHealthHandler struct {
@@ -32,16 +32,18 @@ type SystemHealthHandler struct {
 	forgeHealthURL   string
 	indexHealthURL   string
 	weaveHealthURL   string
+	wizardHealthURL  string
 	contentHealthURL string
 }
 
-func NewSystemHealthHandler(pool *pgxpool.Pool, forgeHealthURL, indexHealthURL, weaveHealthURL, contentHealthURL string, timeout time.Duration) *SystemHealthHandler {
+func NewSystemHealthHandler(pool *pgxpool.Pool, forgeHealthURL, indexHealthURL, weaveHealthURL, wizardHealthURL, contentHealthURL string, timeout time.Duration) *SystemHealthHandler {
 	return &SystemHealthHandler{
 		pool:             pool,
 		client:           &http.Client{Timeout: timeout},
 		forgeHealthURL:   forgeHealthURL,
 		indexHealthURL:   indexHealthURL,
 		weaveHealthURL:   weaveHealthURL,
+		wizardHealthURL:  wizardHealthURL,
 		contentHealthURL: contentHealthURL,
 	}
 }
@@ -84,6 +86,7 @@ func (h *SystemHealthHandler) Status(c *gin.Context) {
 		{"forge", h.forgeHealthURL},
 		{"index", h.indexHealthURL},
 		{"weave", h.weaveHealthURL},
+		{"wizard", h.wizardHealthURL},
 		{"content", h.contentHealthURL},
 	}
 

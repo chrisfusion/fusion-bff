@@ -16,6 +16,7 @@ type Config struct {
 	ForgeURL          string
 	IndexURL          string
 	WeaveURL          string
+	WizardURL         string
 	ContentURL        string
 	SATokenPath       string
 	WeaveSATokenPath  string
@@ -63,6 +64,7 @@ type Config struct {
 	ForgeHealthURL     string        // FORGE_HEALTH_URL — default: ForgeURL+"/health"
 	IndexHealthURL     string        // INDEX_HEALTH_URL — default: IndexURL+"/health"
 	WeaveHealthURL     string        // WEAVE_HEALTH_URL — default: WeaveURL+"/health"
+	WizardHealthURL    string        // WIZARD_HEALTH_URL — default: WizardURL+"/healthz" (note: /healthz, not /health)
 	ContentHealthURL   string        // CONTENT_HEALTH_URL — default: ContentURL+"/q/health/ready"
 	HealthProbeTimeout time.Duration // HEALTH_PROBE_TIMEOUT — default 5s
 }
@@ -78,6 +80,7 @@ func Load() (*Config, error) {
 		ForgeURL:         envOrDefault("FORGE_URL", "http://fusion-forge.fusion.svc.cluster.local:8080"),
 		IndexURL:         envOrDefault("INDEX_URL", "http://fusion-index-backend.fusion.svc.cluster.local:8080"),
 		WeaveURL:         envOrDefault("WEAVE_URL", "http://fusion-weave-api.fusion.svc.cluster.local:8082"),
+		WizardURL:        envOrDefault("WIZARD_URL", "http://fusion-wizard-api.fusion.svc.cluster.local:8083"),
 		ContentURL:       envOrDefault("CONTENT_URL", "http://fusion-content.fusion.svc.cluster.local:8080"),
 		SATokenPath:      envOrDefault("K8S_SA_TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token"),
 		WeaveSATokenPath: envOrDefault("WEAVE_SA_TOKEN_PATH", "/var/run/secrets/fusion-bff/weave/token"),
@@ -105,6 +108,7 @@ func Load() (*Config, error) {
 	cfg.ForgeHealthURL    = envOrDefault("FORGE_HEALTH_URL",   cfg.ForgeURL+"/health")
 	cfg.IndexHealthURL    = envOrDefault("INDEX_HEALTH_URL",   cfg.IndexURL+"/health")
 	cfg.WeaveHealthURL    = envOrDefault("WEAVE_HEALTH_URL",   cfg.WeaveURL+"/health")
+	cfg.WizardHealthURL   = envOrDefault("WIZARD_HEALTH_URL",  cfg.WizardURL+"/healthz")
 	cfg.ContentHealthURL  = envOrDefault("CONTENT_HEALTH_URL", cfg.ContentURL+"/q/health/ready")
 
 	if !cfg.OIDCBypass {

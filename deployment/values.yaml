@@ -89,11 +89,15 @@ config:
   forgeUrl: "http://fusion-forge.fusion.svc.cluster.local:8080"
   indexUrl: "http://fusion-index-backend.fusion.svc.cluster.local:8080"
   weaveUrl: "http://fusion-weave-api.fusion.svc.cluster.local:8082"
+  # fusion-wizard's Service name follows its own Helm release name (<release>-api), not a fixed
+  # name — adjust if fusion-wizard is installed under a release name other than "fusion-wizard".
+  wizardUrl: "http://fusion-wizard-api.fusion.svc.cluster.local:8083"
   contentUrl: "http://fusion-content.fusion.svc.cluster.local:8080"
   # Health probe URLs — defaults shown below; override only if a backend exposes health at a different path
   forgeHealthUrl: ""
   indexHealthUrl: ""
   weaveHealthUrl: ""
+  wizardHealthUrl: ""    # default: {wizardUrl}/healthz (note: /healthz, not /health)
   contentHealthUrl: ""   # default: {contentUrl}/q/health/ready
   healthProbeTimeout: "5s"
   # BFF session layer — required when oidcBypass is false
