@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, fusion-wizard, and fusion-content.
-  version: 0.12.0
+  version: 0.13.0
   license:
     name: GPL-3.0
 servers:
@@ -137,9 +137,13 @@ paths:
                     type: string
                   owner_groups:
                     type: array
-                    description: Teams owning CRs the user belongs to (resolved at login)
+                    description: Teams owning CRs the user belongs to (resolved at login); always includes the default owner group when configured
                     items:
                       type: string
+                  preferred_owner_group:
+                    type: string
+                    nullable: true
+                    description: Owner group the GUI should preselect — the user's stored preference while they still belong to it, else the default owner group; null when neither applies
                   roles:
                     type: array
                     items:
@@ -214,6 +218,59 @@ paths:
                               - Maintenance
                             description:
                               type: string
+  /bff/preferences:
+    get:
+      tags:
+      - auth
+      summary: Get the caller's preferences
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Preferences'
+        '401':
+          description: No valid session
+    put:
+      tags:
+      - auth
+      summary: Set the preferred owner group
+      description: The group must be one the caller currently belongs to (see owner_groups in /bff/userinfo). Takes effect immediately.
+      security:
+      - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - preferred_owner_group
+              properties:
+                preferred_owner_group:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Preferences'
+        '400':
+          description: Missing body, not a member of that group, or the token carries no user id claim
+        '401':
+          description: No valid session
+        '503':
+          description: No database configured (DB_DSN), preferences cannot be stored
+    delete:
+      tags:
+      - auth
+      summary: Clear the preferred owner group
+      description: The default owner group applies again.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Preferences'
+        '401':
+          description: No valid session
+        '503':
+          description: No database configured (DB_DSN)
   /bff/presets:
     get:
       tags:
@@ -508,6 +565,8 @@ paths:
           description: Invalid id
         '404':
           description: Not found
+        '409':
+          description: The default owner group cannot be deleted
   /bff/admin/owner-group-mappings:
     get:
       tags:
@@ -6036,6 +6095,21 @@ components:
           '403':
             description: Missing required RBAC permission for this route
   responses:
+    Preferences:
+      description: The caller's preferences
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              preferred_owner_group:
+                type: string
+                nullable: true
+                description: Stored preference; null when none is set
+              effective:
+                type: string
+                nullable: true
+                description: What the GUI should preselect (stored preference while still a member, else the default owner group)
     ForgeBadRequest:
       description: Invalid request body or parameters
       content:

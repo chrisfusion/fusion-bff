@@ -35,6 +35,7 @@ func NewRouter(
 	systemHealthH *handler.SystemHealthHandler,
 	presetsH *handler.PresetsHandler,
 	ownerGroupH *handler.OwnerGroupHandler,
+	preferencesH *handler.PreferencesHandler,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -79,6 +80,13 @@ func NewRouter(
 		ownerGroupAdmin.GET("/owner-group-members", ownerGroupH.ListMembers)
 		ownerGroupAdmin.POST("/owner-group-members", ownerGroupH.CreateMember)
 		ownerGroupAdmin.DELETE("/owner-group-members/:id", ownerGroupH.DeleteMember)
+	}
+
+	if preferencesH != nil {
+		prefs := bff.Group("/preferences", middleware.SessionAuth(store, cfg.SessionCookieName, ""))
+		prefs.GET("", preferencesH.Get)
+		prefs.PUT("", preferencesH.Put)
+		prefs.DELETE("", preferencesH.Delete)
 	}
 
 	if presetsH != nil {

@@ -90,6 +90,11 @@ config:
   # against. Unique within one OIDC instance but may differ between instances. Default "sub";
   # set to a custom claim (e.g. "employee_id") for an identifier that is stable across instances.
   oidcUserIdClaim: "sub"
+  # Owner group every authenticated user implicitly belongs to, so resources owned by it are
+  # usable by everyone. The row is seeded into owner_groups at startup (needs db.*) and cannot be
+  # deleted via the admin API. Set to "" to disable. Renaming later leaves the old row and the
+  # resources tagged with it behind — they stop being visible to everyone.
+  defaultOwnerGroup: "default"
   forgeUrl: "http://fusion-forge.fusion.svc.cluster.local:8080"
   indexUrl: "http://fusion-index-backend.fusion.svc.cluster.local:8080"
   weaveUrl: "http://fusion-weave-api.fusion.svc.cluster.local:8082"

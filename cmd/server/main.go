@@ -87,11 +87,27 @@ func main() {
 		// adminH and resourcePermH stay nil — NewRouter skips the /bff/admin RBAC group
 	}
 
+	// The default owner group applies to every user, with or without a DB.
+	if g := cfg.DefaultOwnerGroup; g != "" {
+		if !handler.ValidOwnerGroupName(g) {
+			slog.Error("invalid DEFAULT_OWNER_GROUP", "value", g)
+			os.Exit(1)
+		}
+		rbacEngine.WithDefaultOwnerGroup(g)
+	}
+
 	// Owner groups need only the DB, independent of group_source.
 	var ownerGroupH *handler.OwnerGroupHandler
 	if pool != nil {
 		rbacEngine.WithOwnerGroups(pool)
-		ownerGroupH = handler.NewOwnerGroupHandler(pool)
+		ownerGroupH = handler.NewOwnerGroupHandler(pool, cfg.DefaultOwnerGroup)
+		if g := cfg.DefaultOwnerGroup; g != "" {
+			// Seed the row so the default group shows up in admin listings and can be mapped/assigned.
+			if err := db.EnsureOwnerGroup(ctx, pool, g, "Default owner group — every user is a member"); err != nil {
+				slog.Error("seed default owner group", "error", err)
+				os.Exit(1)
+			}
+		}
 	}
 
 	// SystemHealthHandler is always constructed — live probing works without DB;
@@ -154,6 +170,7 @@ func main() {
 	}
 
 	authH := handler.NewAuthHandler(cfg, store, validator, checker, rbacEngine)
+	preferencesH := handler.NewPreferencesHandler(rbacEngine, store)
 
 	saToken := token.NewFileProvider(cfg.SATokenPath, cfg.SATokenCacheTTL)
 	weaveSAToken := token.NewFileProvider(cfg.WeaveSATokenPath, cfg.SATokenCacheTTL)
@@ -187,7 +204,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, wizardProxy, contentProxy, adminH, resourcePermH, systemHealthH, presetsH, ownerGroupH)
+	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, wizardProxy, contentProxy, adminH, resourcePermH, systemHealthH, presetsH, ownerGroupH, preferencesH)
 	if mockOIDC != nil {
 		mockOIDC.RegisterRoutes(router)
 	}

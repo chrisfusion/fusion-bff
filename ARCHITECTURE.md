@@ -53,6 +53,8 @@
 │    /bff/admin/*                 → middleware.SessionAuth         │
 │                                   ("admin:roles:manage" group)   │
 │                                   + handler.Admin/ResourcePerm   │
+│    /bff/preferences             → middleware.SessionAuth         │
+│                                   + handler.Preferences          │
 │    /bff/presets                 → middleware.SessionAuth         │
 │                                   ("bff:presets:read")           │
 │                                   + handler.Presets              │
@@ -218,8 +220,8 @@ internal/
     merged_store.go  MergedGroupRoleStore (both)
     route.go         MatchRoute — first-match rule evaluation, captures ResourceID; RoutePermission is a thin wrapper
   db/
-    db.go            Open + Migrate (group_role_assignments, resource_permissions, service_status_overrides, owner_groups, owner_group_oidc_mappings, owner_group_members tables)
-    owner_groups.go  CRUD for the owner-group tables + LoadOwnerGroupsForUser (OIDC group ∪ email ∪ user_id)
+    db.go            Open + Migrate (group_role_assignments, resource_permissions, service_status_overrides, owner_groups, owner_group_oidc_mappings, owner_group_members, user_preferences tables)
+    owner_groups.go  CRUD for the owner-group tables + LoadOwnerGroupsForUser (OIDC group ∪ email ∪ user_id) + EnsureOwnerGroup + per-user preferred group queries
     queries.go       CRUD for the first three tables + LoadAllGroupRoles, LoadResourcePermsForUser, ListServiceStatuses
   api/
     handler/
@@ -229,6 +231,7 @@ internal/
       resource_permissions.go  /bff/admin/resource-permissions
       owner_groups.go /bff/admin/owner-groups, owner-group-mappings, owner-group-members
       system_health.go /bff/system-health (all users); /bff/admin/service-status (admin:health:manage)
+      preferences.go /bff/preferences (session-only; caller's preferred owner group)
       presets.go     /bff/presets (bff:presets:read)
     middleware/
       apiauth.go     /api/* — session cookie + Bearer fallback + route permission check

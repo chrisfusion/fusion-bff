@@ -31,6 +31,7 @@ type Session struct {
 	Permissions         []string
 	ResourcePermissions []ResourcePermission
 	OwnerGroups         []string // teams owning CRs; resolved at login like ResourcePermissions
+	PreferredOwnerGroup string   // stored per-user preference ("" = none); loaded at login, updated by /bff/preferences
 	AccessToken         string
 	RefreshToken        string
 	IDToken             string

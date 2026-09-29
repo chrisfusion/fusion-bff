@@ -166,7 +166,14 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 		ownerGroups = nil
 	}
 
+	preferred, err := h.engine.StoredPreferredOwnerGroup(c.Request.Context(), claims.UserID)
+	if err != nil {
+		middleware.LoggerFromCtx(c).Warn("callback: load preferred owner group", "error", err)
+		preferred = ""
+	}
+
 	sess := &session.Session{
+		PreferredOwnerGroup: preferred,
 		Sub:                 claims.Subject,
 		UserID:              claims.UserID,
 		OwnerGroups:         ownerGroups,
@@ -260,6 +267,7 @@ func (h *AuthHandler) UserInfo(c *gin.Context) {
 		"sub":                  sess.Sub,
 		"user_id":              sess.UserID,
 		"owner_groups":         ownerGroups,
+		"preferred_owner_group": preferredOwnerGroup(h.engine, sess),
 		"email":                sess.Email,
 		"name":                 sess.Name,
 		"roles":                roles,
@@ -350,4 +358,12 @@ func generateRandomHex(n int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// preferredOwnerGroup returns the group the GUI should preselect, or nil (JSON null) when none applies.
+func preferredOwnerGroup(engine *rbac.Engine, sess *session.Session) any {
+	if g := engine.EffectivePreferredOwnerGroup(sess.PreferredOwnerGroup, sess.OwnerGroups); g != "" {
+		return g
+	}
+	return nil
 }

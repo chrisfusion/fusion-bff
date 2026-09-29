@@ -58,6 +58,11 @@ CREATE TABLE IF NOT EXISTS owner_group_members (
     created_by  TEXT NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (owner_group, match_type, match_value)
+);
+CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id               TEXT PRIMARY KEY,
+    preferred_owner_group TEXT NOT NULL,
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );`
 
 func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {

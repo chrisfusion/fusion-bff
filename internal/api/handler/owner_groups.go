@@ -23,12 +23,16 @@ var ownerGroupNameRE = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]{0,61}[A-Z
 // OwnerGroupHandler manages owner groups — the teams that own CRs — together with the
 // two ways a user joins one: an OIDC group mapping, or a direct email / user-id match.
 type OwnerGroupHandler struct {
-	pool *pgxpool.Pool
+	pool         *pgxpool.Pool
+	defaultGroup string // every user is implicitly a member; must not be deleted
 }
 
-func NewOwnerGroupHandler(pool *pgxpool.Pool) *OwnerGroupHandler {
-	return &OwnerGroupHandler{pool: pool}
+func NewOwnerGroupHandler(pool *pgxpool.Pool, defaultGroup string) *OwnerGroupHandler {
+	return &OwnerGroupHandler{pool: pool, defaultGroup: defaultGroup}
 }
+
+// ValidOwnerGroupName reports whether name is usable as an owner group name.
+func ValidOwnerGroupName(name string) bool { return ownerGroupNameRE.MatchString(name) }
 
 // GET /bff/admin/owner-groups
 func (h *OwnerGroupHandler) ListGroups(c *gin.Context) {
@@ -60,6 +64,19 @@ func (h *OwnerGroupHandler) CreateGroup(c *gin.Context) {
 
 // DELETE /bff/admin/owner-groups/:id — also removes the group's mappings and members.
 func (h *OwnerGroupHandler) DeleteGroup(c *gin.Context) {
+	if h.defaultGroup != "" {
+		if id, err := strconv.Atoi(c.Param("id")); err == nil {
+			row, found, err := db.GetOwnerGroup(c.Request.Context(), h.pool, id)
+			if err != nil {
+				internalError(c, err)
+				return
+			}
+			if found && row.Name == h.defaultGroup {
+				c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": "the default owner group cannot be deleted"})
+				return
+			}
+		}
+	}
 	deleteByID(c, h.pool, db.DeleteOwnerGroup, "admin: owner group deleted",
 		func(r db.OwnerGroupRow) []any { return []any{"owner_group", r.Name, "id", r.ID} })
 }

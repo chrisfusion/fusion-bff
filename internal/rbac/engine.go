@@ -2,6 +2,7 @@ package rbac
 
 import (
 	"context"
+	"slices"
 	"sort"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,6 +34,9 @@ type Engine struct {
 	// ownerPool backs owner-group resolution. Kept separate from pool so owner groups work
 	// with group_source "jwt" too, without also switching on DB-backed resource permissions.
 	ownerPool *pgxpool.Pool
+
+	// defaultOwnerGroup is the owner group every user belongs to; "" = disabled.
+	defaultOwnerGroup string
 }
 
 // NewEngine builds an Engine.
@@ -64,14 +68,63 @@ func (e *Engine) WithOwnerGroups(pool *pgxpool.Pool) *Engine {
 	return e
 }
 
+// WithDefaultOwnerGroup sets the owner group every user implicitly belongs to ("" = none).
+func (e *Engine) WithDefaultOwnerGroup(name string) *Engine {
+	e.defaultOwnerGroup = name
+	return e
+}
+
+// DefaultOwnerGroup returns the configured default owner group, or "" when disabled.
+func (e *Engine) DefaultOwnerGroup() string { return e.defaultOwnerGroup }
+
 // ResolveOwnerGroups returns the sorted owner groups (the teams owning CRs) the user
-// belongs to, matched by OIDC group, email, or the configured user-id claim.
-// Returns an empty slice (never nil) when owner groups are not enabled.
+// belongs to, matched by OIDC group, email, or the configured user-id claim, plus the
+// default owner group (when configured), which applies to every user — also without a DB.
+// Never returns nil.
 func (e *Engine) ResolveOwnerGroups(ctx context.Context, userID, email string, oidcGroups []string) ([]string, error) {
-	if e.ownerPool == nil {
-		return []string{}, nil
+	groups := []string{}
+	if e.ownerPool != nil {
+		var err error
+		if groups, err = db.LoadOwnerGroupsForUser(ctx, e.ownerPool, userID, email, oidcGroups); err != nil {
+			return nil, err
+		}
 	}
-	return db.LoadOwnerGroupsForUser(ctx, e.ownerPool, userID, email, oidcGroups)
+	if e.defaultOwnerGroup != "" && !slices.Contains(groups, e.defaultOwnerGroup) {
+		groups = append(groups, e.defaultOwnerGroup)
+		sort.Strings(groups)
+	}
+	return groups, nil
+}
+
+// PreferencesEnabled reports whether preferred owner groups can be persisted (needs the DB).
+func (e *Engine) PreferencesEnabled() bool { return e.ownerPool != nil }
+
+// StoredPreferredOwnerGroup returns the user's stored preference, or "" when none is set,
+// no user id is known, or preferences are not enabled.
+func (e *Engine) StoredPreferredOwnerGroup(ctx context.Context, userID string) (string, error) {
+	if e.ownerPool == nil || userID == "" {
+		return "", nil
+	}
+	return db.GetPreferredOwnerGroup(ctx, e.ownerPool, userID)
+}
+
+// SetPreferredOwnerGroup persists the preference; the caller has verified membership.
+func (e *Engine) SetPreferredOwnerGroup(ctx context.Context, userID, ownerGroup string) error {
+	return db.UpsertPreferredOwnerGroup(ctx, e.ownerPool, userID, ownerGroup)
+}
+
+// ClearPreferredOwnerGroup removes the stored preference.
+func (e *Engine) ClearPreferredOwnerGroup(ctx context.Context, userID string) error {
+	return db.DeletePreferredOwnerGroup(ctx, e.ownerPool, userID)
+}
+
+// EffectivePreferredOwnerGroup returns the group the GUI should preselect: the stored
+// preference while the user still belongs to it, else the default owner group, else "".
+func (e *Engine) EffectivePreferredOwnerGroup(stored string, ownerGroups []string) string {
+	if stored != "" && slices.Contains(ownerGroups, stored) {
+		return stored
+	}
+	return e.defaultOwnerGroup
 }
 
 // Resolve returns the sorted roles and permissions for the given user.

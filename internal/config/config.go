@@ -14,6 +14,7 @@ type Config struct {
 	OIDCJWKSURL       string
 	AllowedUsers      []string
 	OIDCUserIDClaim   string // OIDC_USER_ID_CLAIM — claim holding the instance-unique user id; default "sub"
+	DefaultOwnerGroup string // DEFAULT_OWNER_GROUP — owner group every authenticated user belongs to; "" disables; default "default"
 	ForgeURL          string
 	IndexURL          string
 	WeaveURL          string
@@ -86,6 +87,12 @@ func Load() (*Config, error) {
 		ContentURL:       envOrDefault("CONTENT_URL", "http://fusion-content.fusion.svc.cluster.local:8080"),
 		SATokenPath:      envOrDefault("K8S_SA_TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token"),
 		WeaveSATokenPath: envOrDefault("WEAVE_SA_TOKEN_PATH", "/var/run/secrets/fusion-bff/weave/token"),
+	}
+
+	// An explicitly empty DEFAULT_OWNER_GROUP disables the default group; unset means "default".
+	cfg.DefaultOwnerGroup = "default"
+	if v, ok := os.LookupEnv("DEFAULT_OWNER_GROUP"); ok {
+		cfg.DefaultOwnerGroup = strings.TrimSpace(v)
 	}
 
 	cfg.OIDCBypass = os.Getenv("OIDC_BYPASS") == "true"

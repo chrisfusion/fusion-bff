@@ -183,3 +183,48 @@ func LoadOwnerGroupsForUser(ctx context.Context, pool *pgxpool.Pool, userID, ema
 	}
 	return names, rows.Err()
 }
+
+// GetOwnerGroup returns the owner group with the given id; found is false when none exists.
+func GetOwnerGroup(ctx context.Context, pool *pgxpool.Pool, id int) (row OwnerGroupRow, found bool, err error) {
+	if err = scanOwnerGroup(pool.QueryRow(ctx, `SELECT `+ownerGroupCols+` FROM owner_groups WHERE id = $1`, id), &row); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return OwnerGroupRow{}, false, nil
+		}
+		return OwnerGroupRow{}, false, err
+	}
+	return row, true, nil
+}
+
+// EnsureOwnerGroup creates the owner group if it does not exist yet (idempotent).
+func EnsureOwnerGroup(ctx context.Context, pool *pgxpool.Pool, name, description string) error {
+	_, err := pool.Exec(ctx,
+		`INSERT INTO owner_groups (name, description, created_by) VALUES ($1, $2, 'system') ON CONFLICT (name) DO NOTHING`,
+		name, description)
+	return err
+}
+
+// ── Per-user preferred owner group ────────────────────────────────────────────
+
+// GetPreferredOwnerGroup returns the user's stored preference, or "" when none is set.
+// Whether the user still belongs to that group is checked by the caller.
+func GetPreferredOwnerGroup(ctx context.Context, pool *pgxpool.Pool, userID string) (string, error) {
+	var name string
+	err := pool.QueryRow(ctx, `SELECT preferred_owner_group FROM user_preferences WHERE user_id = $1`, userID).Scan(&name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return name, err
+}
+
+func UpsertPreferredOwnerGroup(ctx context.Context, pool *pgxpool.Pool, userID, ownerGroup string) error {
+	_, err := pool.Exec(ctx,
+		`INSERT INTO user_preferences (user_id, preferred_owner_group) VALUES ($1, $2)
+		 ON CONFLICT (user_id) DO UPDATE SET preferred_owner_group = EXCLUDED.preferred_owner_group, updated_at = NOW()`,
+		userID, ownerGroup)
+	return err
+}
+
+func DeletePreferredOwnerGroup(ctx context.Context, pool *pgxpool.Pool, userID string) error {
+	_, err := pool.Exec(ctx, `DELETE FROM user_preferences WHERE user_id = $1`, userID)
+	return err
+}

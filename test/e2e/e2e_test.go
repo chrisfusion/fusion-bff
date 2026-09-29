@@ -154,7 +154,7 @@ func TestMain(m *testing.M) {
 	wizardProxy, _ := proxy.NewUpstreamProxy(cfg.WizardURL, "/api/wizard", saToken)
 	contentProxy, _ := proxy.NewUpstreamProxy(cfg.ContentURL, "/api/content", saToken)
 
-	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, wizardProxy, contentProxy, nil, nil, nil, nil, nil)
+	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, wizardProxy, contentProxy, nil, nil, nil, nil, nil, nil)
 	bffServer = httptest.NewServer(router)
 	defer bffServer.Close()
 

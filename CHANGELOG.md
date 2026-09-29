@@ -7,6 +7,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-09-29
+
+### Added
+- Default owner group: every authenticated user is implicitly a member of the owner group named by `DEFAULT_OWNER_GROUP` (Helm `config.defaultOwnerGroup`, default `default`; empty disables), so resources owned by it are usable by everyone. Applies to cookie sessions and the Bearer path, is included in `owner_groups` / `X-User-Groups`, and works without a database. With `DB_DSN` set the group is seeded into `owner_groups` at startup (idempotent); an invalid name fails startup.
+- Preferred owner group: each user can store the owner group the GUI should preselect. New table `user_preferences` (keyed by the `OIDC_USER_ID_CLAIM` value) and session-only `GET/PUT/DELETE /bff/preferences` (no RBAC permission; `PUT` requires current membership → 400, and a database → 503). `GET /bff/userinfo` gains `preferred_owner_group`: the stored preference while the user still belongs to it, otherwise the default owner group, otherwise `null`. Not forwarded upstream.
+- Documented in `internal/docs/openapi.yaml`; README/ARCHITECTURE/EXAMPLE/CLAUDE.md updated.
+
+### Changed
+- `DELETE /bff/admin/owner-groups/{id}` returns `409` for the default owner group.
+- `NewOwnerGroupHandler` takes the default group name and `api.NewRouter` a `PreferencesHandler` (internal API).
+
 ## [0.12.0] — 2026-09-29
 
 ### Added

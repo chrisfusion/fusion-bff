@@ -167,6 +167,19 @@ curl -s -b /tmp/bff-cookies.txt -X POST $BFF/bff/admin/owner-group-members \
 curl -s -b /tmp/bff-cookies.txt $BFF/bff/userinfo | jq .owner_groups   # after re-login
 ```
 
+Every user is also a member of the default owner group (`DEFAULT_OWNER_GROUP`, default `default`), so resources owned by it are usable by everyone.
+
+### Preferred owner group (any authenticated user)
+
+`preferred_owner_group` in `/bff/userinfo` is what the GUI preselects in its "which group" field: the stored preference while the user still belongs to that group, otherwise the default owner group.
+
+```bash
+curl -s -b /tmp/bff-cookies.txt -X PUT $BFF/bff/preferences \
+  -H 'Content-Type: application/json' -d '{"preferred_owner_group":"team-data"}'   # 400 if not a member
+curl -s -b /tmp/bff-cookies.txt $BFF/bff/preferences | jq .                        # {preferred_owner_group, effective}
+curl -s -b /tmp/bff-cookies.txt -X DELETE $BFF/bff/preferences                     # back to the default group
+```
+
 ---
 
 ## Unauthenticated request → 401

@@ -12,7 +12,7 @@ import (
 // Validation runs before any DB access, so a nil pool is enough to exercise the 400 paths.
 func TestOwnerGroupHandler_Validation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := NewOwnerGroupHandler(nil)
+	h := NewOwnerGroupHandler(nil, "default")
 	r := gin.New()
 	r.POST("/groups", h.CreateGroup)
 	r.POST("/mappings", h.CreateMapping)
