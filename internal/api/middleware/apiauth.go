@@ -75,7 +75,7 @@ func APIAuth(
 						return
 					}
 				}
-				c.Request = proxy.SetUserContext(c.Request, sess.Sub, sess.Email)
+				c.Request = proxy.SetUserContext(c.Request, sess.Sub, sess.Email, sess.OwnerGroups)
 				c.Next()
 				return
 			}
@@ -136,7 +136,13 @@ func APIAuth(
 			}
 		}
 
-		c.Request = proxy.SetUserContext(c.Request, claims.Subject, claims.Email)
+		ownerGroups, oerr := engine.ResolveOwnerGroups(c.Request.Context(), claims.UserID, claims.Email, claims.Groups)
+		if oerr != nil {
+			// Non-fatal: forward without owner groups rather than failing the request.
+			LoggerFromCtx(c).Warn("apiauth: resolve owner groups for bearer", "error", oerr)
+			ownerGroups = nil
+		}
+		c.Request = proxy.SetUserContext(c.Request, claims.Subject, claims.Email, ownerGroups)
 		c.Next()
 	}
 }

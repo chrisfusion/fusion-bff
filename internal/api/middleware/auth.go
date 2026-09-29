@@ -34,7 +34,7 @@ func Auth(validator oidc.TokenValidator, checker allowlist.Checker) gin.HandlerF
 			return
 		}
 
-		c.Request = proxy.SetUserContext(c.Request, claims.Subject, claims.Email)
+		c.Request = proxy.SetUserContext(c.Request, claims.Subject, claims.Email, nil)
 		c.Next()
 	}
 }

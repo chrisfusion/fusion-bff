@@ -117,7 +117,7 @@ func TestMain(m *testing.M) {
 
 	validator, err := oidc.NewValidator(
 		context.Background(),
-		cfg.OIDCIssuerURL, cfg.OIDCClientID, cfg.OIDCJWKSURL, cfg.JWKSCacheTTL,
+		cfg.OIDCIssuerURL, cfg.OIDCClientID, cfg.OIDCJWKSURL, cfg.OIDCUserIDClaim, cfg.JWKSCacheTTL,
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "validator: %v\n", err)
@@ -154,7 +154,7 @@ func TestMain(m *testing.M) {
 	wizardProxy, _ := proxy.NewUpstreamProxy(cfg.WizardURL, "/api/wizard", saToken)
 	contentProxy, _ := proxy.NewUpstreamProxy(cfg.ContentURL, "/api/content", saToken)
 
-	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, wizardProxy, contentProxy, nil, nil, nil, nil)
+	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, wizardProxy, contentProxy, nil, nil, nil, nil, nil)
 	bffServer = httptest.NewServer(router)
 	defer bffServer.Close()
 

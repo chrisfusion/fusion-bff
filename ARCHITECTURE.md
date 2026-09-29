@@ -124,10 +124,11 @@ proxy.UpstreamProxy.Handler()
  └─ httputil.ReverseProxy.ServeHTTP()
       └─ Rewrite:
            strip /api/index prefix  →  /api/v1/artifacts
-           del X-User-ID, X-User-Email, Authorization
+           del X-User-ID, X-User-Email, X-User-Groups, Authorization
            set Authorization: Bearer <SA token>
            set X-User-ID: <sub>
            set X-User-Email: <email>
+           set X-User-Groups: <owner groups, comma-separated>
  │
  ▼
 fusion-index-backend  GET /api/v1/artifacts
@@ -217,14 +218,16 @@ internal/
     merged_store.go  MergedGroupRoleStore (both)
     route.go         MatchRoute — first-match rule evaluation, captures ResourceID; RoutePermission is a thin wrapper
   db/
-    db.go            Open + Migrate (group_role_assignments, resource_permissions, service_status_overrides tables)
-    queries.go       CRUD for all three tables + LoadAllGroupRoles, LoadResourcePermsForUser, ListServiceStatuses
+    db.go            Open + Migrate (group_role_assignments, resource_permissions, service_status_overrides, owner_groups, owner_group_oidc_mappings, owner_group_members tables)
+    owner_groups.go  CRUD for the owner-group tables + LoadOwnerGroupsForUser (OIDC group ∪ email ∪ user_id)
+    queries.go       CRUD for the first three tables + LoadAllGroupRoles, LoadResourcePermsForUser, ListServiceStatuses
   api/
     handler/
       health.go      /health /livez /readyz
       auth.go        /bff/login, /bff/callback, /bff/logout, /bff/userinfo
       admin.go       /bff/admin/group-roles, /bff/admin/rbac-config
       resource_permissions.go  /bff/admin/resource-permissions
+      owner_groups.go /bff/admin/owner-groups, owner-group-mappings, owner-group-members
       system_health.go /bff/system-health (all users); /bff/admin/service-status (admin:health:manage)
       presets.go     /bff/presets (bff:presets:read)
     middleware/
@@ -261,7 +264,7 @@ The proxy `Rewrite` function receives `*httputil.ProxyRequest`, not a Gin contex
 
 ### Anti-spoofing header deletion
 
-`Rewrite` unconditionally deletes `X-User-ID`, `X-User-Email`, and `Authorization` before setting them from the validated context. A malicious client cannot inject trusted identity headers.
+`Rewrite` unconditionally deletes `X-User-ID`, `X-User-Email`, `X-User-Groups`, and `Authorization` before setting them from the validated context. A malicious client cannot inject trusted identity headers.
 
 ### Resource permissions at login, not per-request
 

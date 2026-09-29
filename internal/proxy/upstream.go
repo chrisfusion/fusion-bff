@@ -16,16 +16,19 @@ import (
 type ctxKey string
 
 const (
-	ctxKeyUserID    ctxKey = "fusion-bff/user-id"
-	ctxKeyUserEmail ctxKey = "fusion-bff/user-email"
-	ctxKeySAToken   ctxKey = "fusion-bff/sa-token"
+	ctxKeyUserID     ctxKey = "fusion-bff/user-id"
+	ctxKeyUserEmail  ctxKey = "fusion-bff/user-email"
+	ctxKeyUserGroups ctxKey = "fusion-bff/user-groups"
+	ctxKeySAToken    ctxKey = "fusion-bff/sa-token"
 )
 
 // SetUserContext stores validated user identity in the request context so the
 // proxy Rewrite function can inject it as trusted headers without importing Gin.
-func SetUserContext(r *http.Request, userID, email string) *http.Request {
+// ownerGroups become the X-User-Groups header (comma-separated).
+func SetUserContext(r *http.Request, userID, email string, ownerGroups []string) *http.Request {
 	ctx := context.WithValue(r.Context(), ctxKeyUserID, userID)
 	ctx = context.WithValue(ctx, ctxKeyUserEmail, email)
+	ctx = context.WithValue(ctx, ctxKeyUserGroups, strings.Join(ownerGroups, ","))
 	return r.WithContext(ctx)
 }
 
@@ -39,7 +42,7 @@ type UpstreamProxy struct {
 // NewUpstreamProxy builds an UpstreamProxy that:
 //   - strips stripPrefix from the inbound path before forwarding
 //   - replaces Authorization with the SA token (fetched per-request in Handler)
-//   - injects X-User-ID and X-User-Email from the request context
+//   - injects X-User-ID, X-User-Email and X-User-Groups (owner groups) from the request context
 //   - strips client-supplied identity headers to prevent spoofing
 func NewUpstreamProxy(baseURL, stripPrefix string, saToken token.Provider) (*UpstreamProxy, error) {
 	target, err := url.Parse(baseURL)
@@ -82,6 +85,7 @@ func NewUpstreamProxy(baseURL, stripPrefix string, saToken token.Provider) (*Ups
 			// Strip client-supplied headers to prevent spoofing.
 			pr.Out.Header.Del("X-User-ID")
 			pr.Out.Header.Del("X-User-Email")
+			pr.Out.Header.Del("X-User-Groups")
 			pr.Out.Header.Del("Authorization")
 
 			// SA token was pre-fetched in Handler and stored in the request context.
@@ -93,6 +97,9 @@ func NewUpstreamProxy(baseURL, stripPrefix string, saToken token.Provider) (*Ups
 			}
 			if email, ok := pr.In.Context().Value(ctxKeyUserEmail).(string); ok && email != "" {
 				pr.Out.Header.Set("X-User-Email", email)
+			}
+			if groups, ok := pr.In.Context().Value(ctxKeyUserGroups).(string); ok && groups != "" {
+				pr.Out.Header.Set("X-User-Groups", groups)
 			}
 		},
 	}

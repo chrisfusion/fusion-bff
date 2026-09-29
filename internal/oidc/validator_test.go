@@ -46,3 +46,29 @@ func TestGroupsClaimUnmarshalJSON_MixedArray(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractUserID(t *testing.T) {
+	claims := map[string]json.RawMessage{
+		"sub":     json.RawMessage(`"abc-123"`),
+		"uid":     json.RawMessage(`"corp-42"`),
+		"numeric": json.RawMessage(`4711`),
+		"obj":     json.RawMessage(`{"a":1}`),
+	}
+	tests := []struct {
+		name, claim, want string
+	}{
+		{"default is sub", "", "abc-123"},
+		{"explicit sub", "sub", "abc-123"},
+		{"custom claim", "uid", "corp-42"},
+		{"numeric claim", "numeric", "4711"},
+		{"missing claim", "nope", ""},
+		{"non-scalar claim", "obj", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ExtractUserID(claims, tt.claim); got != tt.want {
+				t.Errorf("ExtractUserID(%q) = %q, want %q", tt.claim, got, tt.want)
+			}
+		})
+	}
+}

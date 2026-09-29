@@ -38,15 +38,17 @@ type TokenValidator interface {
 }
 
 type oidcValidator struct {
-	verifier *gooidc.IDTokenVerifier
+	verifier    *gooidc.IDTokenVerifier
+	userIDClaim string
 }
 
 // NewValidator constructs a TokenValidator that verifies JWTs against the given
 // JWKS URL without performing OIDC provider discovery at startup.
-func NewValidator(ctx context.Context, issuerURL, clientID, jwksURL string, cacheTTL time.Duration) (TokenValidator, error) {
+// userIDClaim names the claim exposed as UserClaims.UserID ("" = "sub").
+func NewValidator(ctx context.Context, issuerURL, clientID, jwksURL, userIDClaim string, cacheTTL time.Duration) (TokenValidator, error) {
 	keySet := newCachingKeySet(ctx, jwksURL, cacheTTL)
 	verifier := gooidc.NewVerifier(issuerURL, keySet, &gooidc.Config{ClientID: clientID})
-	return &oidcValidator{verifier: verifier}, nil
+	return &oidcValidator{verifier: verifier, userIDClaim: userIDClaim}, nil
 }
 
 func (v *oidcValidator) Validate(ctx context.Context, rawToken string) (*UserClaims, error) {
@@ -65,6 +67,11 @@ func (v *oidcValidator) Validate(ctx context.Context, rawToken string) (*UserCla
 		return nil, fmt.Errorf("extracting claims: %w", err)
 	}
 
+	var all map[string]json.RawMessage
+	if err := token.Claims(&all); err != nil {
+		return nil, fmt.Errorf("extracting claims: %w", err)
+	}
+
 	// Keycloak sends groups with a leading "/" (e.g. "/team-data"); normalise to bare names.
 	groups := make([]string, 0, len(raw.Groups))
 	for _, g := range raw.Groups {
@@ -73,6 +80,7 @@ func (v *oidcValidator) Validate(ctx context.Context, rawToken string) (*UserCla
 
 	return &UserClaims{
 		Subject: raw.Sub,
+		UserID:  ExtractUserID(all, v.userIDClaim),
 		Email:   raw.Email,
 		Name:    raw.Name,
 		Groups:  groups,

@@ -86,6 +86,10 @@ config:
   saTokenCacheTtl: "5m"
   allowlistCacheTtl: "30s"
   allowedUsers: ""        # comma-separated sub or email values; empty = allow all
+  # Claim holding the unique user id that owner-group members of match_type "user_id" are matched
+  # against. Unique within one OIDC instance but may differ between instances. Default "sub";
+  # set to a custom claim (e.g. "employee_id") for an identifier that is stable across instances.
+  oidcUserIdClaim: "sub"
   forgeUrl: "http://fusion-forge.fusion.svc.cluster.local:8080"
   indexUrl: "http://fusion-index-backend.fusion.svc.cluster.local:8080"
   weaveUrl: "http://fusion-weave-api.fusion.svc.cluster.local:8082"

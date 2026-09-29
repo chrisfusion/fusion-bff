@@ -27,15 +27,16 @@ Pod-to-pod traffic (e.g. CI pipelines calling forge directly) bypasses the BFF e
 | Browser PKCE login | `/bff/login` → Keycloak redirect; `/bff/callback` exchanges code, validates id_token, sets HttpOnly `sid` cookie |
 | Session management | Server-side in-memory sessions; silent access token refresh when within 30 s of expiry |
 | Logout | Revokes refresh token, deletes session, clears cookie, redirects to Keycloak `end_session` |
-| User info | `GET /bff/userinfo` returns `{sub, email, name, roles, permissions, resource_permissions}` from the active session |
+| User info | `GET /bff/userinfo` returns `{sub, user_id, email, name, roles, permissions, resource_permissions, owner_groups}` from the active session |
 | RBAC | Config-driven roles + permissions (`rbac.yaml`); route-level enforcement via `APIAuth` middleware; resource-scoped grants in PostgreSQL |
-| Admin API | `/bff/admin/group-roles` (CRUD), `/bff/admin/resource-permissions` (CRUD), `/bff/admin/rbac-config` (read) — require `admin:roles:manage` |
+| Admin API | `/bff/admin/group-roles` (CRUD), `/bff/admin/resource-permissions` (CRUD), `/bff/admin/rbac-config` (read), `/bff/admin/owner-groups`, `/bff/admin/owner-group-mappings`, `/bff/admin/owner-group-members` (CRUD) — require `admin:roles:manage` |
+| Owner groups | Teams that own CRs (steps, runs, …), separate from roles. A user joins via a mapped OIDC group or a direct match on email / `user_id`; resolved at login (needs `DB_DSN`) and forwarded upstream as `X-User-Groups` |
 | System health | `GET /bff/system-health` (any authenticated user) aggregates live probes of forge/index/weave/wizard/content; `/bff/admin/service-status` (CRUD overrides) requires `admin:health:manage` |
 | Presets API | `GET /bff/presets` serves static infrastructure presets (Kafka clusters, secret names) from an optional `presets.yaml`; requires `bff:presets:read` |
 | API docs | `GET /bff/openapi.yaml` (spec) and `GET /bff/docs` (Swagger UI) — no auth required |
 | OIDC JWT validation | RS256 signature check against JWKS; configurable cache TTL; Bearer fallback for service-to-service calls |
 | User allowlist | Match `sub` or `email` claim; empty list = any authenticated user |
-| Identity forwarding | `X-User-ID` (sub), `X-User-Email` injected on every upstream request |
+| Identity forwarding | `X-User-ID` (sub), `X-User-Email`, and `X-User-Groups` (comma-separated owner groups, omitted when empty) injected on every upstream request |
 | SA token rotation | Reads K8s projected tokens from disk with configurable TTL cache |
 | Proxy routing | `/api/forge/*` → `fusion-forge`; `/api/index/*` → `fusion-index`; `/api/weave/*` → `fusion-weave`; `/api/wizard/*` → `fusion-wizard`; `/api/content/*` → `fusion-content` |
 | SA token isolation | Separate projected token per upstream; weave token has no audience restriction for K8s TokenReview compatibility |
@@ -130,6 +131,7 @@ All configuration is via environment variables.
 | `OIDC_PUBLIC_AUTH_URL` | `OIDC_ISSUER_URL` | Browser-visible Keycloak base URL for auth redirects (set when public URL differs from cluster-internal issuer) |
 | `OIDC_JWKS_URL` | `{issuer}/protocol/openid-connect/certs` | Override JWKS endpoint (required for non-Keycloak providers) |
 | `OIDC_JWKS_CACHE_TTL` | `15m` | How often to force-refresh the JWKS key set |
+| `OIDC_USER_ID_CLAIM` | `sub` | Claim holding the unique user id used for direct owner-group membership (`match_type: user_id`). May be a custom claim; Helm: `config.oidcUserIdClaim` |
 | `OIDC_REVOKE_URL` | `{issuer}/protocol/openid-connect/revoke` | Token revocation endpoint |
 | `OIDC_END_SESSION_URL` | `{publicAuthURL}/protocol/openid-connect/logout` | Keycloak end_session (browser redirect on logout) |
 | `SESSION_SECRET` | — | Required when the session layer is enabled (real OIDC mode) |

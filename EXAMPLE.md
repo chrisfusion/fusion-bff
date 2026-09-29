@@ -146,6 +146,29 @@ curl -s -b /tmp/bff-cookies.txt $BFF/bff/presets | jq .
 
 ---
 
+## Owner groups (session cookie + `admin:roles:manage`)
+
+Owner groups are the teams that own CRs. They are independent of roles. A user belongs to one when an OIDC group is mapped to it, or when their email / `user_id` is assigned directly. `user_id` is the claim named by `OIDC_USER_ID_CLAIM` (default `sub`). Membership is resolved at login and forwarded upstream as `X-User-Groups`.
+
+```bash
+curl -s -b /tmp/bff-cookies.txt -X POST $BFF/bff/admin/owner-groups \
+  -H 'Content-Type: application/json' -d '{"name":"team-data","description":"Data team"}'
+
+# via OIDC group
+curl -s -b /tmp/bff-cookies.txt -X POST $BFF/bff/admin/owner-group-mappings \
+  -H 'Content-Type: application/json' -d '{"owner_group":"team-data","oidc_group":"data-engineers"}'
+
+# directly by email (stable across OIDC instances) or by user id
+curl -s -b /tmp/bff-cookies.txt -X POST $BFF/bff/admin/owner-group-members \
+  -H 'Content-Type: application/json' -d '{"owner_group":"team-data","match_type":"email","match_value":"jane@example.com"}'
+curl -s -b /tmp/bff-cookies.txt -X POST $BFF/bff/admin/owner-group-members \
+  -H 'Content-Type: application/json' -d '{"owner_group":"team-data","match_type":"user_id","match_value":"<uid>"}'
+
+curl -s -b /tmp/bff-cookies.txt $BFF/bff/userinfo | jq .owner_groups   # after re-login
+```
+
+---
+
 ## Unauthenticated request → 401
 
 Any `/api/*` path without a token returns 401:

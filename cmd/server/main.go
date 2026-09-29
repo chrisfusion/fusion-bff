@@ -87,6 +87,13 @@ func main() {
 		// adminH and resourcePermH stay nil — NewRouter skips the /bff/admin RBAC group
 	}
 
+	// Owner groups need only the DB, independent of group_source.
+	var ownerGroupH *handler.OwnerGroupHandler
+	if pool != nil {
+		rbacEngine.WithOwnerGroups(pool)
+		ownerGroupH = handler.NewOwnerGroupHandler(pool)
+	}
+
 	// SystemHealthHandler is always constructed — live probing works without DB;
 	// overrides are skipped when pool is nil.
 	systemHealthH := handler.NewSystemHealthHandler(
@@ -109,7 +116,7 @@ func main() {
 		validator = mockOIDC.Validator()
 		checker = allowlist.New(nil)
 	} else {
-		validator, err = oidc.NewValidator(ctx, cfg.OIDCIssuerURL, cfg.OIDCClientID, cfg.OIDCJWKSURL, cfg.JWKSCacheTTL)
+		validator, err = oidc.NewValidator(ctx, cfg.OIDCIssuerURL, cfg.OIDCClientID, cfg.OIDCJWKSURL, cfg.OIDCUserIDClaim, cfg.JWKSCacheTTL)
 		if err != nil {
 			slog.Error("oidc validator", "error", err)
 			os.Exit(1)
@@ -180,7 +187,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, wizardProxy, contentProxy, adminH, resourcePermH, systemHealthH, presetsH)
+	router := api.NewRouter(validator, checker, authH, store, refreshFn, cfg, rbacEngine, forgeProxy, indexProxy, weaveProxy, wizardProxy, contentProxy, adminH, resourcePermH, systemHealthH, presetsH, ownerGroupH)
 	if mockOIDC != nil {
 		mockOIDC.RegisterRoutes(router)
 	}

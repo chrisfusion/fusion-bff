@@ -34,6 +34,30 @@ CREATE TABLE IF NOT EXISTS service_status_overrides (
     description TEXT NOT NULL DEFAULT '',
     updated_by  TEXT NOT NULL DEFAULT '',
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS owner_groups (
+    id          SERIAL PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    created_by  TEXT NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS owner_group_oidc_mappings (
+    id          SERIAL PRIMARY KEY,
+    owner_group TEXT NOT NULL REFERENCES owner_groups(name) ON DELETE CASCADE,
+    oidc_group  TEXT NOT NULL,
+    created_by  TEXT NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (owner_group, oidc_group)
+);
+CREATE TABLE IF NOT EXISTS owner_group_members (
+    id          SERIAL PRIMARY KEY,
+    owner_group TEXT NOT NULL REFERENCES owner_groups(name) ON DELETE CASCADE,
+    match_type  TEXT NOT NULL CHECK (match_type IN ('email','user_id')),
+    match_value TEXT NOT NULL,
+    created_by  TEXT NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (owner_group, match_type, match_value)
 );`
 
 func Open(ctx context.Context, dsn string) (*pgxpool.Pool, error) {

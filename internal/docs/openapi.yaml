@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, fusion-wizard, and fusion-content.
-  version: 0.11.0
+  version: 0.12.0
   license:
     name: GPL-3.0
 servers:
@@ -128,10 +128,18 @@ paths:
                 properties:
                   sub:
                     type: string
+                  user_id:
+                    type: string
+                    description: Value of the claim named by OIDC_USER_ID_CLAIM (default sub)
                   email:
                     type: string
                   name:
                     type: string
+                  owner_groups:
+                    type: array
+                    description: Teams owning CRs the user belongs to (resolved at login)
+                    items:
+                      type: string
                   roles:
                     type: array
                     items:
@@ -419,6 +427,209 @@ paths:
       tags:
       - rbac-admin
       summary: Revoke a resource-scoped permission grant
+      security:
+      - sessionCookie: []
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Deleted
+        '400':
+          description: Invalid id
+        '404':
+          description: Not found
+  /bff/admin/owner-groups:
+    get:
+      tags:
+      - rbac-admin
+      summary: List owner groups
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OwnerGroupRow'
+    post:
+      tags:
+      - rbac-admin
+      summary: Create an owner group (a team owning CRs)
+      security:
+      - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: 1-63 chars, letters/digits/./_/-, alphanumeric at both ends
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerGroupRow'
+        '400':
+          description: Invalid body or unknown owner group
+        '409':
+          description: Already exists
+  /bff/admin/owner-groups/{id}:
+    delete:
+      tags:
+      - rbac-admin
+      summary: Delete owner group
+      security:
+      - sessionCookie: []
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Deleted
+        '400':
+          description: Invalid id
+        '404':
+          description: Not found
+  /bff/admin/owner-group-mappings:
+    get:
+      tags:
+      - rbac-admin
+      summary: List OIDC group to owner group mappings
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OwnerGroupMappingRow'
+    post:
+      tags:
+      - rbac-admin
+      summary: Map an OIDC group to an owner group
+      security:
+      - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner_group, oidc_group]
+              properties:
+                owner_group:
+                  type: string
+                oidc_group:
+                  type: string
+                  description: OIDC group name (leading / is stripped)
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerGroupMappingRow'
+        '400':
+          description: Invalid body or unknown owner group
+        '409':
+          description: Already exists
+  /bff/admin/owner-group-mappings/{id}:
+    delete:
+      tags:
+      - rbac-admin
+      summary: Delete OIDC group to owner group mapping
+      security:
+      - sessionCookie: []
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Deleted
+        '400':
+          description: Invalid id
+        '404':
+          description: Not found
+  /bff/admin/owner-group-members:
+    get:
+      tags:
+      - rbac-admin
+      summary: List direct owner group members
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OwnerGroupMemberRow'
+    post:
+      tags:
+      - rbac-admin
+      summary: Assign a user to an owner group by email or user id
+      security:
+      - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner_group, match_type, match_value]
+              properties:
+                owner_group:
+                  type: string
+                match_type:
+                  type: string
+                  enum:
+                  - email
+                  - user_id
+                match_value:
+                  type: string
+                  description: Email (case-insensitive) or the value of the OIDC_USER_ID_CLAIM claim
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerGroupMemberRow'
+        '400':
+          description: Invalid body or unknown owner group
+        '409':
+          description: Already exists
+  /bff/admin/owner-group-members/{id}:
+    delete:
+      tags:
+      - rbac-admin
+      summary: Delete direct owner group member
       security:
       - sessionCookie: []
       parameters:
@@ -3533,6 +3744,50 @@ components:
         resource_type:
           type: string
         resource_id:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    OwnerGroupRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    OwnerGroupMappingRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        owner_group:
+          type: string
+        oidc_group:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    OwnerGroupMemberRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        owner_group:
+          type: string
+        match_type:
+          type: string
+        match_value:
           type: string
         created_by:
           type: string

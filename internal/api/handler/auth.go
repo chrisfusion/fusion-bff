@@ -156,8 +156,20 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 		resourcePerms = nil
 	}
 
+	if claims.UserID == "" {
+		middleware.LoggerFromCtx(c).Warn("callback: configured user id claim missing from token; direct owner group matching by user_id disabled for this login",
+			"sub", claims.Subject, "email", claims.Email)
+	}
+	ownerGroups, err := h.engine.ResolveOwnerGroups(c.Request.Context(), claims.UserID, claims.Email, claims.Groups)
+	if err != nil {
+		middleware.LoggerFromCtx(c).Warn("callback: resolve owner groups", "error", err)
+		ownerGroups = nil
+	}
+
 	sess := &session.Session{
 		Sub:                 claims.Subject,
+		UserID:              claims.UserID,
+		OwnerGroups:         ownerGroups,
 		Email:               claims.Email,
 		Name:                claims.Name,
 		Groups:              claims.Groups,
@@ -178,7 +190,8 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 
 	h.setSessionCookie(c, sid)
 	middleware.LoggerFromCtx(c).Info("callback: login succeeded",
-		"sub", claims.Subject, "email", claims.Email, "groups", claims.Groups, "roles", roles)
+		"sub", claims.Subject, "user_id", claims.UserID, "email", claims.Email, "groups", claims.Groups,
+		"roles", roles, "owner_groups", ownerGroups)
 	c.Redirect(http.StatusFound, h.postLoginRedirectURL)
 }
 
@@ -239,8 +252,14 @@ func (h *AuthHandler) UserInfo(c *gin.Context) {
 	if resourcePerms == nil {
 		resourcePerms = []session.ResourcePermission{}
 	}
+	ownerGroups := sess.OwnerGroups
+	if ownerGroups == nil {
+		ownerGroups = []string{}
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"sub":                  sess.Sub,
+		"user_id":              sess.UserID,
+		"owner_groups":         ownerGroups,
 		"email":                sess.Email,
 		"name":                 sess.Name,
 		"roles":                roles,

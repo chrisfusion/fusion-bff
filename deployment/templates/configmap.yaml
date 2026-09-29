@@ -11,6 +11,7 @@ data:
   SA_TOKEN_CACHE_TTL: {{ .Values.config.saTokenCacheTtl | quote }}
   ALLOWLIST_CACHE_TTL: {{ .Values.config.allowlistCacheTtl | quote }}
   ALLOWED_USERS: {{ .Values.config.allowedUsers | quote }}
+  OIDC_USER_ID_CLAIM: {{ .Values.config.oidcUserIdClaim | default "sub" | quote }}
   FORGE_URL: {{ .Values.config.forgeUrl | quote }}
   INDEX_URL: {{ .Values.config.indexUrl | quote }}
   WEAVE_URL: {{ .Values.config.weaveUrl | quote }}

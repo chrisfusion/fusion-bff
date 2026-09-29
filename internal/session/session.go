@@ -23,12 +23,14 @@ type ResourcePermission struct {
 type Session struct {
 	ID                  string
 	Sub                 string
+	UserID              string // value of the configured identifier claim (OIDC_USER_ID_CLAIM)
 	Email               string
 	Name                string
 	Groups              []string // JWT groups claim at login time — kept for diagnostic logging only
 	Roles               []string
 	Permissions         []string
 	ResourcePermissions []ResourcePermission
+	OwnerGroups         []string // teams owning CRs; resolved at login like ResourcePermissions
 	AccessToken         string
 	RefreshToken        string
 	IDToken             string

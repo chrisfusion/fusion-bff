@@ -65,6 +65,7 @@ func (v *mockValidator) Validate(_ context.Context, rawToken string) (*oidcpkg.U
 
 	return &oidcpkg.UserClaims{
 		Subject: claims.Sub,
+		UserID:  claims.Sub, // the mock only mints "sub"; a custom OIDC_USER_ID_CLAIM is not simulated
 		Email:   claims.Email,
 		Name:    claims.Name,
 		Groups:  groups,

@@ -13,6 +13,7 @@ type Config struct {
 	OIDCClientID      string
 	OIDCJWKSURL       string
 	AllowedUsers      []string
+	OIDCUserIDClaim   string // OIDC_USER_ID_CLAIM — claim holding the instance-unique user id; default "sub"
 	ForgeURL          string
 	IndexURL          string
 	WeaveURL          string
@@ -77,6 +78,7 @@ func Load() (*Config, error) {
 		OIDCIssuerURL: os.Getenv("OIDC_ISSUER_URL"),
 		OIDCClientID:  os.Getenv("OIDC_CLIENT_ID"),
 		OIDCJWKSURL:   os.Getenv("OIDC_JWKS_URL"),
+		OIDCUserIDClaim: envOrDefault("OIDC_USER_ID_CLAIM", "sub"),
 		ForgeURL:         envOrDefault("FORGE_URL", "http://fusion-forge.fusion.svc.cluster.local:8080"),
 		IndexURL:         envOrDefault("INDEX_URL", "http://fusion-index-backend.fusion.svc.cluster.local:8080"),
 		WeaveURL:         envOrDefault("WEAVE_URL", "http://fusion-weave-api.fusion.svc.cluster.local:8082"),

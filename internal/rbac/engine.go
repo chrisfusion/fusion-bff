@@ -29,6 +29,10 @@ type Engine struct {
 	roleStore GroupRoleStore
 	cfg       *RBACConfig
 	pool      *pgxpool.Pool // nil when group_source is "jwt" and no DB configured
+
+	// ownerPool backs owner-group resolution. Kept separate from pool so owner groups work
+	// with group_source "jwt" too, without also switching on DB-backed resource permissions.
+	ownerPool *pgxpool.Pool
 }
 
 // NewEngine builds an Engine.
@@ -52,6 +56,22 @@ func NewEngine(cfg *RBACConfig, pool *pgxpool.Pool) *Engine {
 		roleStore = NewStaticGroupRoleStore(cfg.GroupRoles)
 	}
 	return &Engine{resolver: JWTResolver{}, roleStore: roleStore, cfg: cfg, pool: pool}
+}
+
+// WithOwnerGroups enables owner-group resolution backed by pool and returns the engine.
+func (e *Engine) WithOwnerGroups(pool *pgxpool.Pool) *Engine {
+	e.ownerPool = pool
+	return e
+}
+
+// ResolveOwnerGroups returns the sorted owner groups (the teams owning CRs) the user
+// belongs to, matched by OIDC group, email, or the configured user-id claim.
+// Returns an empty slice (never nil) when owner groups are not enabled.
+func (e *Engine) ResolveOwnerGroups(ctx context.Context, userID, email string, oidcGroups []string) ([]string, error) {
+	if e.ownerPool == nil {
+		return []string{}, nil
+	}
+	return db.LoadOwnerGroupsForUser(ctx, e.ownerPool, userID, email, oidcGroups)
 }
 
 // Resolve returns the sorted roles and permissions for the given user.

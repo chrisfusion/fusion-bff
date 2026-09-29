@@ -7,6 +7,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-09-29
+
+### Added
+- Owner groups: teams that own CRs (steps, runs, …), separate from the OIDC-group→role mapping. A user joins an owner group through a mapped OIDC group or a direct assignment by email (case-insensitive) or `user_id`. New tables `owner_groups`, `owner_group_oidc_mappings`, `owner_group_members` (idempotent migration; deleting a group cascades to its mappings and members) and admin CRUD at `/bff/admin/owner-groups`, `/bff/admin/owner-group-mappings`, `/bff/admin/owner-group-members` (`admin:roles:manage`, audit-logged). Requires `DB_DSN`; works with any `group_source`.
+- `OIDC_USER_ID_CLAIM` (Helm `config.oidcUserIdClaim`, default `sub`): claim used as the unique user id for `match_type: user_id`, so deployments can use a custom claim that is stable across OIDC instances. The value is exposed as `user_id` in the session and `GET /bff/userinfo`; a token lacking the claim simply never matches by user id (warning logged at login).
+- Owner groups are resolved at login (like resource permissions, changes apply on next login; the Bearer path resolves per request), returned as `owner_groups` by `GET /bff/userinfo` and forwarded to all upstreams as the trusted `X-User-Groups` header (comma-separated, omitted when empty; client-supplied values are stripped). Forward-only for now: the BFF does not yet enforce or scope anything by owner group.
+- Documented the new endpoints and `userinfo` fields in `internal/docs/openapi.yaml`; README/ARCHITECTURE/EXAMPLE updated.
+
+### Changed
+- `oidc.NewValidator` and `proxy.SetUserContext` take the user-id claim name / owner groups respectively (internal API).
+
 ## [0.11.0] — 2026-09-22
 
 ### Added

@@ -34,6 +34,7 @@ func NewRouter(
 	resourcePermH *handler.ResourcePermHandler,
 	systemHealthH *handler.SystemHealthHandler,
 	presetsH *handler.PresetsHandler,
+	ownerGroupH *handler.OwnerGroupHandler,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -64,6 +65,20 @@ func NewRouter(
 			adminGroup.POST("/resource-permissions", resourcePermH.Create)
 			adminGroup.DELETE("/resource-permissions/:id", resourcePermH.Delete)
 		}
+	}
+
+	if ownerGroupH != nil {
+		ownerGroupAdmin := bff.Group("/admin")
+		ownerGroupAdmin.Use(middleware.SessionAuth(store, cfg.SessionCookieName, "admin:roles:manage"))
+		ownerGroupAdmin.GET("/owner-groups", ownerGroupH.ListGroups)
+		ownerGroupAdmin.POST("/owner-groups", ownerGroupH.CreateGroup)
+		ownerGroupAdmin.DELETE("/owner-groups/:id", ownerGroupH.DeleteGroup)
+		ownerGroupAdmin.GET("/owner-group-mappings", ownerGroupH.ListMappings)
+		ownerGroupAdmin.POST("/owner-group-mappings", ownerGroupH.CreateMapping)
+		ownerGroupAdmin.DELETE("/owner-group-mappings/:id", ownerGroupH.DeleteMapping)
+		ownerGroupAdmin.GET("/owner-group-members", ownerGroupH.ListMembers)
+		ownerGroupAdmin.POST("/owner-group-members", ownerGroupH.CreateMember)
+		ownerGroupAdmin.DELETE("/owner-group-members/:id", ownerGroupH.DeleteMember)
 	}
 
 	if presetsH != nil {
