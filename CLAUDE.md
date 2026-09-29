@@ -166,6 +166,13 @@ New action endpoints under existing weave resource paths need only a `route_perm
 `weave:steps:restart` is the run-state-mutation permission (used for PATCH and action sub-paths like `/stop`). The name is historical; it covers any write that changes run phase.
 **Route ordering**: trailing `*` matches one-or-more segments, so `runs/*` matches both `runs/{name}` and `runs/{name}/stop`. For POST action rules, place the specific sub-path rule (`runs/*/stop`) before any broader POST rules to guarantee first-match wins.
 
+## Owner groups (teams owning CRs)
+
+Separate from group→role RBAC. Tables `owner_groups`, `owner_group_oidc_mappings`, `owner_group_members` (`internal/db/owner_groups.go`); admin CRUD `/bff/admin/owner-{groups,group-mappings,group-members}` (`admin:roles:manage`, own Gin group, built whenever `DB_DSN` is set — independent of `group_source`).
+- Membership = mapped OIDC group ∪ direct match on email (lower-cased) or `user_id`. `user_id` = claim named by `OIDC_USER_ID_CLAIM` (Helm `config.oidcUserIdClaim`, default `sub`; instance-unique, may differ between OIDC instances — email is the portable one). Mock OIDC always sets `user_id = sub`.
+- Resolved at login into `Session.OwnerGroups` (changes apply on next login; Bearer path resolves per request), exposed as `owner_groups`/`user_id` in `/bff/userinfo`, forwarded upstream as `X-User-Groups` (comma-separated; stripped from clients). Forward-only: BFF enforces nothing by owner group, and it is deliberately NOT wired into `resource_permissions` (left unchanged on purpose).
+- `Engine.WithOwnerGroups(pool)` is separate from `NewEngine`'s pool so `group_source: jwt` doesn't accidentally enable DB resource permissions.
+
 ## Allowlist design
 
 `ALLOWED_USERS` is comma-separated. Entries containing `@` match the JWT `email` claim; all other entries match `sub`. Empty = allow any authenticated user.
@@ -196,6 +203,7 @@ Same Flux + Helm pattern as fusion-forge:
 | `OIDC_JWKS_URL` | `{OIDC_ISSUER_URL}/protocol/openid-connect/certs` | Override JWKS endpoint (required for non-Keycloak providers) |
 | `OIDC_JWKS_CACHE_TTL` | `15m` | How often to force-refresh the JWKS key set |
 | `ALLOWED_USERS` | — | Comma-separated `sub` or `email` values; empty = any authenticated user |
+| `OIDC_USER_ID_CLAIM` | `sub` | Claim used as the unique user id for owner-group `user_id` membership (may be a custom claim) |
 | `FORGE_URL` | `http://fusion-forge.fusion.svc.cluster.local:8080` | fusion-forge base URL |
 | `INDEX_URL` | `http://fusion-index-backend.fusion.svc.cluster.local:8080` | fusion-index base URL |
 | `WEAVE_URL` | `http://fusion-weave-api.fusion.svc.cluster.local:8082` | fusion-weave API server base URL |
@@ -261,6 +269,10 @@ make docker-build IMG=fusion-bff:local
 
 # Run locally (reads .env if present)
 make run
+
+# DB query changes: no DB tests in repo — verify with a throwaway container + temporary test in internal/db (delete afterwards)
+docker run --rm -d --name pgtest -e POSTGRES_PASSWORD=x -p 55432:5432 postgres:16-alpine   # DSN postgres://postgres:x@localhost:55432/postgres
+# httputil.ReverseProxy tests: use httptest.NewServer(ginEngine), not ResponseRecorder (gin CloseNotify panic)
 
 # Port-forward
 kubectl port-forward -n fusion service/fusion-bff 18081:8080 --address 127.0.0.1
@@ -329,5 +341,6 @@ INSTALL.md and DEV.md were removed (2026-07) — don't recreate or link to them;
 - Add a new `## [x.y.z] — YYYY-MM-DD` section at the top (below `[Unreleased]`); bump the patch version for fixes, minor version for new features.
 - Use `### Added`, `### Changed`, `### Fixed`, or `### Removed` subsections as appropriate.
 - One bullet per logical change; keep it concise but self-contained (reader should not need to read the diff).
+- Feature releases bump `deployment/Chart.yaml` (`version` + `appVersion`), `internal/docs/openapi.yaml` `info.version` and CHANGELOG together (0.12.0 = owner groups).
 - Also sync `deployment/rbac.yaml` and bump `deployment/Chart.yaml` `version`/`appVersion` when releasing.
 - **`deployment/Chart.yaml` drift**: Before bumping for a new release, check `version` against the latest CHANGELOG `[x.y.z]` entry — they can diverge if prior sessions added CHANGELOG entries without bumping the chart. Next release version is `max(chart.version, changelog.latest) + patch`. Also check `internal/docs/openapi.yaml`'s `info.version` — it can drift independently of both (seen stuck at 0.6.1 while chart/CHANGELOG were already at 0.7.0); fold it into the same `max(...)` comparison.
