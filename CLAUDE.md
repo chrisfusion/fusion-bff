@@ -25,7 +25,7 @@ Go dependencies are vendored and committed (`vendor/`, ~79 MB) because the CI en
 
 ## Logging
 
-Follow `../logging_principles.md` exactly. Key rules:
+Follow `../fusion-shared/docs/logging_principles.md` exactly. Key rules:
 - No `import "log"` anywhere — use `log/slog` throughout
 - `internal/api/middleware/logging.go`: `NewLoggingMiddleware()` + `LoggerFromCtx(c)` — handler errors must use `LoggerFromCtx(c)`, never bare `slog.*`
 - `internal/api/handler/helpers.go`: `internalError(c, err)` — use for all unexpected 500 paths (logs + responds)
@@ -34,6 +34,7 @@ Follow `../logging_principles.md` exactly. Key rules:
 
 ## Sibling service references
 
+- Cross-project docs live in `../fusion-shared/docs/` (public repo). `../` itself is a local directory with no remote: never put shared files there.
 - fusion-forge API additions: `../fusion-forge/CLAUDE.md`
 - fusion-weave API additions: `../fusion-flux/CLAUDE.md` (directory is fusion-flux, service is fusion-weave)
 
@@ -173,6 +174,8 @@ New action endpoints under existing weave resource paths need only a `route_perm
 
 ## Owner groups (teams owning CRs)
 
+**Planned change:** the shared default owner group is replaced by auto-created personal groups plus a wildcard mapping `*` → `shared`; BFF forwarding becomes real enforcement in the services. Do not extend the default-group code. See `../fusion-shared/docs/multi-tenancy.md` (W6, W12, W33).
+
 Separate from group→role RBAC. Tables `owner_groups`, `owner_group_oidc_mappings`, `owner_group_members` (`internal/db/owner_groups.go`); admin CRUD `/bff/admin/owner-{groups,group-mappings,group-members}` (`admin:roles:manage`, own Gin group, built whenever `DB_DSN` is set — independent of `group_source`).
 - Membership = mapped OIDC group ∪ direct match on email (lower-cased) or `user_id`. `user_id` = claim named by `OIDC_USER_ID_CLAIM` (Helm `config.oidcUserIdClaim`, default `sub`; instance-unique, may differ between OIDC instances — email is the portable one). Mock OIDC always sets `user_id = sub`.
 - **Default owner group**: `DEFAULT_OWNER_GROUP` (Helm `config.defaultOwnerGroup`, default `default`, empty disables). `Engine.ResolveOwnerGroups` always adds it — also when no DB (`ownerPool == nil`), which is why it lives in the engine and not in the SQL. Seeded into `owner_groups` at startup (`db.EnsureOwnerGroup`); `DELETE /bff/admin/owner-groups/:id` returns 409 for it.
@@ -262,6 +265,7 @@ Same Flux + Helm pattern as fusion-forge:
 ## Commands
 
 ```bash
+# zsh: quote globs or grep fails with "no matches found" -> grep -rn --include='*.go' ...
 # Dev build
 go build ./...
 
@@ -351,3 +355,7 @@ INSTALL.md and DEV.md were removed (2026-07) — don't recreate or link to them;
 - Feature releases bump `deployment/Chart.yaml` (`version` + `appVersion`), `internal/docs/openapi.yaml` `info.version` and CHANGELOG together (0.12.0 = owner groups).
 - Also sync `deployment/rbac.yaml` and bump `deployment/Chart.yaml` `version`/`appVersion` when releasing.
 - **`deployment/Chart.yaml` drift**: Before bumping for a new release, check `version` against the latest CHANGELOG `[x.y.z]` entry — they can diverge if prior sessions added CHANGELOG entries without bumping the chart. Next release version is `max(chart.version, changelog.latest) + patch`. Also check `internal/docs/openapi.yaml`'s `info.version` — it can drift independently of both (seen stuck at 0.6.1 while chart/CHANGELOG were already at 0.7.0); fold it into the same `max(...)` comparison.
+
+## Multi-tenancy / ownership
+
+Cross-project plan (owner groups, trusted headers `X-User-Groups` etc., migration, rollout): `../fusion-shared/docs/multi-tenancy.md` — read it before touching ownership, groups or the `X-User-*` headers.
