@@ -164,7 +164,7 @@ BFF path → upstream path: prefix `/api/content` is stripped, so upstream `/api
 
 ### Adding weave action sub-paths (e.g., /stop, /retry)
 New action endpoints under existing weave resource paths need only a `route_permissions` entry in `rbac.yaml` (+ sync to `deployment/rbac.yaml`). The `api.Any("/weave/*path", weave.Handler())` wildcard proxy already forwards any HTTP method, stripping the `/api/weave` prefix. No router or Go code changes required.
-`weave:steps:restart` is the run-state-mutation permission (used for PATCH and action sub-paths like `/stop`). The name is historical; it covers any write that changes run phase.
+`weave:steps:restart` is the run-state-mutation permission (used for PATCH and action sub-paths like `/stop`). The name is historical; it covers any write that changes run phase. `weave:runs:image` is separate: `POST /runs/*/image` (set a step's image override; admin + engineer) — placed before the PATCH rule. Route rules match method+path only, never the body, so gating a sub-capability differently from `PATCH /runs/*` needs its own flux action endpoint (as `/image`), not a PATCH body convention.
 **Route ordering**: trailing `*` matches one-or-more segments, so `runs/*` matches both `runs/{name}` and `runs/{name}/stop`. For POST action rules, place the specific sub-path rule (`runs/*/stop`) before any broader POST rules to guarantee first-match wins.
 
 ## Owner groups (teams owning CRs)

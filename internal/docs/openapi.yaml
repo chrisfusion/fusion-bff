@@ -3037,6 +3037,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WeaveError'
+  /api/weave/api/v1/runs/{name}/image:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      tags:
+      - weave
+      summary: Set the image override of one step on a run
+      description: |
+        Upserts one entry of spec.imageOverrides on a non-terminal run (validated
+        against the operator's allowed prefixes); a Deployed run-owned Deploy step
+        is rolled to the new image. Requires permission weave:runs:image.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stepName, image]
+              properties:
+                stepName:
+                  type: string
+                image:
+                  type: string
+                imagePullPolicy:
+                  type: string
+                  enum: [Always, IfNotPresent, Never]
+      responses:
+        '200':
+          description: Updated run
+        '400':
+          description: Invalid image or step name
+        '409':
+          description: Run is terminal or was modified concurrently
+  /api/weave/api/v1/image-overrides/options:
+    get:
+      tags:
+      - weave
+      summary: List allowed image prefixes for imageOverrides
+      description: Echoes the operator's ALLOWED_IMAGE_PREFIXES; an empty list means overrides are disabled.
+      responses:
+        '200':
+          description: Allowed prefixes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allowedPrefixes:
+                    type: array
+                    items:
+                      type: string
   /api/weave/api/v1/external-auth/options:
     get:
       tags:

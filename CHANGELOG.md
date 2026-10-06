@@ -7,6 +7,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- New permission `weave:runs:image` (admin, engineer) and route rule `POST /api/weave/api/v1/runs/*/image` → fusion-flux's new `POST /runs/{name}/image`, so changing a run's image override is no longer tied to `weave:steps:restart`. Documented it and `GET /image-overrides/options` in `openapi.yaml`.
+
 ## [0.13.1] — 2026-10-06
 
 ### Added

@@ -39,6 +39,7 @@ role_permissions:
     - weave:kafkatriggers:write
     - weave:kafkatriggers:delete
     - weave:steps:restart
+    - weave:runs:image
     - weave:runs:write
     - weave:runs:delete
     - weave:monitoring:read
@@ -77,6 +78,7 @@ role_permissions:
     - weave:batchtriggers:write
     - weave:kafkatriggers:write
     - weave:steps:restart
+    - weave:runs:image
     - weave:runs:write
     - weave:monitoring:read
     - wizard:definitions:read
@@ -165,6 +167,7 @@ route_permissions:
   - { method: DELETE, path: /api/weave/api/v1/runs/*,                 permission: weave:runs:delete }
   - { method: PUT,    path: /api/weave/api/v1/runs/*,                 permission: weave:runs:write }
   - { method: POST,   path: /api/weave/api/v1/runs/*/stop,            permission: weave:steps:restart }
+  - { method: POST,   path: /api/weave/api/v1/runs/*/image,           permission: weave:runs:image }
   - { method: PATCH,  path: /api/weave/api/v1/runs/*,                 permission: weave:steps:restart }
   - { method: POST,   path: /api/weave/api/v1/runs,                   permission: weave:runs:write }
   - { method: GET,    path: /api/weave/monitor/v1/*,                  permission: weave:monitoring:read }
