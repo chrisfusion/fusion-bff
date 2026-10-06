@@ -19,6 +19,10 @@ fusion-bff sits between the Vue.js web GUI and the internal fusion platform serv
 - **OIDC JWT validation** — `github.com/coreos/go-oidc/v3` against JWKS; custom `cachingKeySet` wrapper adds configurable TTL on top of `RemoteKeySet`
 - **License**: GPL-3.0
 
+## Vendoring (offline builds)
+
+Go dependencies are vendored and committed (`vendor/`, ~79 MB) because the CI environment that builds the images has no internet access. `make build`/`test`/`test-e2e` and the Dockerfile use `-mod=vendor` (no `go mod download`). After any `go.mod` change run `make vendor` and commit `vendor/` with `go.mod`/`go.sum`; `make check-vendor` fails on drift. Remaining external inputs: the Docker base images (`golang:1.25-alpine`, `gcr.io/distroless/static-debian12:nonroot`) — mirror them or `docker save`/`docker load`. Verify with `docker build --network none .`. Blueprint: `docs/go-vendoring-blueprint.md`.
+
 ## Logging
 
 Follow `../logging_principles.md` exactly. Key rules:

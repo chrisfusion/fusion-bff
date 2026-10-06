@@ -8,6 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Vendored Go dependencies (`vendor/`, ~79 MB on disk) because the CI environment that builds the images has no internet access: `make vendor` refreshes it, `make check-vendor` fails on drift, `make build`/`test`/`test-e2e`/`vet`/`run` and the Dockerfile build with `-mod=vendor` (the Dockerfile no longer runs `go mod download`). `vendor/` is marked `-diff linguist-vendored` in `.gitattributes`. Outside Docker the Go 1.25 toolchain must already be installed (use `GOTOOLCHAIN=local`). Indirect `go-openapi/spec` bumped v0.20.4 → v0.21.0 (with `jsonpointer`, `jsonreference`, `swag`, `easyjson`): v0.20.4 shipped an `appveyor.yml` containing a Slack webhook URL that GitHub push protection blocks; v0.21.0 no longer ships it
 - New permission `weave:runs:image` (admin, engineer) and route rule `POST /api/weave/api/v1/runs/*/image` → fusion-flux's new `POST /runs/{name}/image`, so changing a run's image override is no longer tied to `weave:steps:restart`. Documented it and `GET /image-overrides/options` in `openapi.yaml`.
 
 ## [0.13.1] — 2026-10-06
