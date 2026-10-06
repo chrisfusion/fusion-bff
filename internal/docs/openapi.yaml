@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, fusion-wizard, and fusion-content.
-  version: 0.13.0
+  version: 0.13.1
   license:
     name: GPL-3.0
 servers:
@@ -2976,7 +2976,7 @@ paths:
       - weave
       summary: Partially update a WeaveRun
       description: |
-        JSON Merge Patch (RFC 7396) applied directly to the live Kubernetes object. weave:steps:restart is the permission name (historical) — it covers any write that changes run phase, including this endpoint and the /stop action below.
+        JSON Merge Patch (RFC 7396) applied directly to the live Kubernetes object. weave:steps:restart is the permission name (historical) — it covers any write that changes run phase, including this endpoint and the /stop action below. Also the way to change spec.imageOverrides[].image on a running run (rolling update); unknown fields are silently pruned.
       x-required-permission: weave:steps:restart
       requestBody:
         required: true
@@ -5132,6 +5132,12 @@ components:
           format: int64
         message:
           type: string
+        image:
+          type: string
+          description: Container image the Deployment currently runs when set through a WeaveRun image override. Empty otherwise.
+        previousImage:
+          type: string
+          description: Image that ran before the last image override change; kept for one-step rollback and audit.
         codeSourceArtifact:
           type: string
         codeSourceTag:
@@ -5396,15 +5402,19 @@ components:
       type: object
       required:
       - stepName
-      - artifactName
-      - tag
       properties:
         stepName:
           type: string
         artifactName:
           type: string
+          description: >-
+            Full fusion-index artifact name. Must be set together with tag, or both
+            omitted for image-only mode (run-owned Deployment with a custom image from
+            imageOverrides, no code-loader and no fusion-index lookup; ports, resources
+            and env come from the WeaveServiceTemplate).
         tag:
           type: string
+          description: Mutable tag to track. Required with artifactName.
         ingressName:
           type: string
           maxLength: 63
@@ -5414,6 +5424,30 @@ components:
             full hostname.
         indexURL:
           type: string
+    WeaveRunImageOverride:
+      type: object
+      required:
+      - stepName
+      - image
+      properties:
+        stepName:
+          type: string
+          minLength: 1
+          description: Chain step whose template image is replaced. At most one entry per step.
+        image:
+          type: string
+          minLength: 1
+          description: >-
+            Full image reference with an explicit immutable tag or a digest (untagged and
+            :latest are rejected). Must start with one of the operator's
+            ALLOWED_IMAGE_PREFIXES; overrides are disabled when none are configured.
+        imagePullPolicy:
+          type: string
+          enum:
+          - Always
+          - IfNotPresent
+          - Never
+          description: Overrides the template's pull policy for this step.
     WeaveRunSpec:
       type: object
       required:
@@ -5431,6 +5465,20 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WeaveRunStepOverride'
+        imageOverrides:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveRunImageOverride'
+          description: >-
+            Replaces the container image of individual steps for this run only, so one
+            chain/template can serve many customers. Job steps: applies to every Job
+            created afterwards. Deploy steps must be run-owned (have a stepOverrides
+            entry); an override on a chain-owned deploy step is rejected. Unlike the rest
+            of the run spec this field may change after creation: PATCH a new image to
+            roll a Deployed run-owned Deployment (previous image kept in
+            status.activeDeployments[].previousImage). POST/PUT answer 400 on a
+            tag/prefix/duplicate violation; PATCH is validated only by the operator, which
+            ignores an invalid image and explains it in the step message.
         authSecretRefOverride:
           $ref: '#/components/schemas/K8sLocalObjectReference'
           description: >-

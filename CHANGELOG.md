@@ -7,6 +7,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.13.1] — 2026-10-06
+
+### Added
+- Documented fusion-weave's run-level image overrides in `internal/docs/openapi.yaml`: new `WeaveRunImageOverride` schema and `WeaveRunSpec.imageOverrides[]` (explicit non-`latest` tag or digest, operator-side `ALLOWED_IMAGE_PREFIXES`, run-owned Deploy steps only, rolling update via `PATCH /runs/{name}`), plus `image`/`previousImage` on `WeaveActiveDeploymentStatus`.
+- No RBAC change: `POST`/`PUT` on runs stay under `weave:runs:write`, `PATCH` under `weave:steps:restart`.
+
+### Changed
+- `WeaveRunStepOverride.artifactName`/`tag` are no longer required in the schema — both or neither (image-only mode).
+
 ## [0.13.0] — 2026-09-29
 
 ### Added
