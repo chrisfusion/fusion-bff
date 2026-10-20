@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, fusion-wizard, and fusion-content.
-  version: 0.13.1
+  version: 0.13.2
   license:
     name: GPL-3.0
 servers:
@@ -3074,6 +3074,120 @@ paths:
           description: Invalid image or step name
         '409':
           description: Run is terminal or was modified concurrently
+  /api/weave/api/v1/apps:
+    get:
+      tags:
+      - weave
+      summary: List WeaveApps
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveAppList'
+    post:
+      tags:
+      - weave
+      summary: Create a WeaveApp
+      description: |
+        Single-resource fast lane: type=service (Deployment + Service + Ingress) or type=job (entrypoints on a cron schedule or fired on demand). When the operator has ALLOWED_IMAGE_PREFIXES set, spec.image and spec.codeSource.loaderImage need an explicit non-latest tag or digest and an allowed prefix (400 otherwise).
+      x-required-permission: weave:apps:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveApp'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveApp'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '409':
+          $ref: '#/components/responses/WeaveConflict'
+  /api/weave/api/v1/apps/{name}:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave
+      summary: Get a WeaveApp
+      x-required-permission: weave:resources:read
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveApp'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    put:
+      tags:
+      - weave
+      summary: Replace a WeaveApp
+      description: Same image policy as POST.
+      x-required-permission: weave:apps:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeaveApp'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveApp'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    patch:
+      tags:
+      - weave
+      summary: Partially update a WeaveApp
+      description: JSON Merge Patch (RFC 7396) applied directly to the live Kubernetes object. Bypasses the API image check; the operator re-validates and marks a violating app Invalid.
+      x-required-permission: weave:apps:write
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Patched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveApp'
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+    delete:
+      tags:
+      - weave
+      summary: Delete a WeaveApp
+      description: Everything the app created (Deployment, Service, Ingress, Jobs) is owned by it and removed with it.
+      x-required-permission: weave:apps:delete
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
   /api/weave/api/v1/image-overrides/options:
     get:
       tags:
@@ -3227,6 +3341,49 @@ paths:
                 $ref: '#/components/schemas/WeaveMonitorLogResponse'
         '404':
           description: Run not found, step not found / has no associated job, or no pods found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveError'
+  /api/weave/monitor/v1/apps/{name}/logs:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave-monitoring
+      summary: Tail log snapshot for a WeaveApp's pod
+      description: |
+        type=service: the Deployment's best pod. type=job: the newest execution's pod.
+      x-required-permission: weave:monitoring:read
+      parameters:
+      - name: entrypoint
+        in: query
+        description: type=job only — pick the newest execution of this entrypoint.
+        schema:
+          type: string
+      - name: execution
+        in: query
+        description: type=job only — pick a specific execution by Job name.
+        schema:
+          type: string
+      - name: container
+        in: query
+        description: Container to read; code-loader selects the init container.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Log snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveMonitorLogResponse'
+        '404':
+          description: App not found or no pods found
           content:
             application/json:
               schema:
@@ -5339,6 +5496,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/K8sEnvVar'
+        imageOverrides:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveRunImageOverride'
+          description: >-
+            Copied into every run created by this trigger (same validation as
+            WeaveRunSpec.imageOverrides). Job steps only in practice — a trigger
+            cannot set stepOverrides, so deploy-step overrides fail the run.
     WeaveTriggerStatus:
       type: object
       properties:
@@ -5479,6 +5644,211 @@ components:
             full hostname.
         indexURL:
           type: string
+    WeaveAppIngressRule:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          description: Leftmost DNS label; the operator appends the instance-wide ingress host suffix.
+        path:
+          type: string
+          default: /
+        pathType:
+          type: string
+          enum: [Exact, Prefix, ImplementationSpecific]
+          default: Prefix
+        servicePort:
+          type: string
+          description: Name of a service port; optional when the service has a single port.
+    WeaveAppIngress:
+      type: object
+      required:
+      - rules
+      properties:
+        ingressClassName:
+          type: string
+          nullable: true
+        rules:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/WeaveAppIngressRule'
+        tlsSecretName:
+          type: string
+    WeaveAppService:
+      type: object
+      description: Service settings; required for type=service.
+      properties:
+        ports:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveServicePort'
+        replicas:
+          type: integer
+          minimum: 1
+        serviceType:
+          type: string
+          enum: [ClusterIP, NodePort, LoadBalancer]
+        ingressName:
+          type: string
+          description: Shorthand for a single ingress rule; mutually exclusive with ingress.
+        ingress:
+          $ref: '#/components/schemas/WeaveAppIngress'
+        livenessProbe:
+          type: object
+          additionalProperties: true
+        readinessProbe:
+          type: object
+          additionalProperties: true
+        startupProbe:
+          type: object
+          additionalProperties: true
+    WeaveAppEntrypoint:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+        command:
+          type: array
+          items:
+            type: string
+        args:
+          type: array
+          items:
+            type: string
+        env:
+          type: array
+          items:
+            $ref: '#/components/schemas/K8sEnvVar'
+        schedule:
+          type: string
+          description: 6-field cron expression. Without it the entrypoint runs only when fired via the fusion-platform.io/fire annotation.
+    WeaveAppSpec:
+      type: object
+      required:
+      - type
+      - image
+      properties:
+        type:
+          type: string
+          enum: [service, job]
+        image:
+          type: string
+          description: Subject to the operator's ALLOWED_IMAGE_PREFIXES policy (explicit non-latest tag or digest) when configured.
+        codeSource:
+          $ref: '#/components/schemas/WeaveCodeSourceSpec'
+        command:
+          type: array
+          items:
+            type: string
+        args:
+          type: array
+          items:
+            type: string
+        env:
+          type: array
+          items:
+            $ref: '#/components/schemas/K8sEnvVar'
+        resources:
+          $ref: '#/components/schemas/K8sResourceRequirements'
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveVolumeMount'
+        serviceAccountName:
+          type: string
+        podSecurityContext:
+          type: object
+          additionalProperties: true
+        containerSecurityContext:
+          type: object
+          additionalProperties: true
+        service:
+          $ref: '#/components/schemas/WeaveAppService'
+        entrypoints:
+          type: array
+          description: type=job only.
+          items:
+            $ref: '#/components/schemas/WeaveAppEntrypoint'
+        externalAuthRef:
+          $ref: '#/components/schemas/WeaveExternalAuthRef'
+          description: type=job only.
+        unsafeEnvironmentInjector:
+          type: boolean
+          nullable: true
+        activeDeadlineSeconds:
+          type: integer
+          format: int64
+          nullable: true
+        executionTTLSeconds:
+          type: integer
+          format: int32
+          nullable: true
+          description: How long finished Jobs are kept.
+    WeaveAppExecution:
+      type: object
+      properties:
+        entrypoint:
+          type: string
+        jobName:
+          type: string
+        phase:
+          type: string
+          enum: [Running, Succeeded, Failed]
+        startTime:
+          type: string
+          format: date-time
+        completionTime:
+          type: string
+          format: date-time
+        message:
+          type: string
+    WeaveAppStatus:
+      type: object
+      properties:
+        observedGeneration:
+          type: integer
+          format: int64
+        phase:
+          type: string
+          enum: [Pending, Ready, Running, Invalid]
+        validationMessage:
+          type: string
+        deploymentName:
+          type: string
+        codeSourceDeployedVersion:
+          type: string
+        executions:
+          type: array
+          description: Last 20 executions (type=job).
+          items:
+            $ref: '#/components/schemas/WeaveAppExecution'
+    WeaveApp:
+      type: object
+      properties:
+        kind:
+          type: string
+          example: WeaveApp
+        apiVersion:
+          type: string
+          example: weave.fusion-platform.io/v1alpha1
+        metadata:
+          $ref: '#/components/schemas/K8sObjectMeta'
+        spec:
+          $ref: '#/components/schemas/WeaveAppSpec'
+        status:
+          $ref: '#/components/schemas/WeaveAppStatus'
+    WeaveAppList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeaveApp'
     WeaveRunImageOverride:
       type: object
       required:
