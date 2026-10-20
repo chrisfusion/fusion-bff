@@ -8,6 +8,7 @@ group_roles:
   platform-admin:  [admin]
   team-data:       [engineer]
   team-ml:         [engineer]
+  platform-user:   [user]
   platform-viewer: [viewer]
 
 role_permissions:
@@ -61,6 +62,7 @@ role_permissions:
     - admin:health:manage
     - index:admin:manage
     - bff:presets:read
+    - ui:expert
   engineer:
     - index:artifacts:read
     - index:artifacts:write
@@ -94,6 +96,22 @@ role_permissions:
     - content:help:read
     - content:videos:read
     - admin:users:view
+    - bff:presets:read
+    - ui:expert
+  # Common users: wizards + their runs only (Simple mode in fusion-spectra). Provisioning runs
+  # under fusion-wizard's own SA, so no forge/index/weave write permissions are needed.
+  # weave:resources:read feeds the wizards' image-prefix and external-auth pickers.
+  user:
+    - weave:resources:read
+    - wizard:definitions:read
+    - wizard:runs:read
+    - wizard:runs:create
+    - wizard:runs:retry
+    - wizard:runs:rollback
+    - wizard:resources:read
+    - content:changelog:read
+    - content:help:read
+    - content:videos:read
     - bff:presets:read
   viewer:
     - index:artifacts:read

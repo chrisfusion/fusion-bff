@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ---
 
 ## [Unreleased]
+<!-- 2026-10-20 -->
+
+### Added
+- `rbac.yaml`: new `user` role (wizards + runs, weave read for the wizard pickers, content read — no forge/index/weave writes) mapped from group `platform-user`; UI-only permission `ui:expert` for `admin` and `engineer` (unlocks fusion-spectra's Expert mode, no route rule).
 
 ## [0.13.2] — 2026-10-20
 
