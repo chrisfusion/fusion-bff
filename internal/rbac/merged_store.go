@@ -2,7 +2,8 @@ package rbac
 
 import "context"
 
-// MergedGroupRoleStore returns the union of roles from static yaml and DB assignments.
+// MergedGroupRoleStore returns the union of roles from static yaml and DB assignments
+// (for groups and for individual users alike).
 // Used when group_source is "both" — yaml roles are always present, DB adds extras.
 type MergedGroupRoleStore struct {
 	static *StaticGroupRoleStore
@@ -10,11 +11,21 @@ type MergedGroupRoleStore struct {
 }
 
 func (m *MergedGroupRoleStore) RolesForGroup(ctx context.Context, group string) ([]string, error) {
-	a, err := m.static.RolesForGroup(ctx, group)
+	return mergeRoles(ctx, group, m.static.RolesForGroup, m.dbStore.RolesForGroup)
+}
+
+func (m *MergedGroupRoleStore) RolesForUser(ctx context.Context, sub string) ([]string, error) {
+	return mergeRoles(ctx, sub, m.static.RolesForUser, m.dbStore.RolesForUser)
+}
+
+type rolesFunc func(ctx context.Context, key string) ([]string, error)
+
+func mergeRoles(ctx context.Context, key string, static, dbStore rolesFunc) ([]string, error) {
+	a, err := static(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	b, err := m.dbStore.RolesForGroup(ctx, group)
+	b, err := dbStore(ctx, key)
 	if err != nil {
 		return nil, err
 	}

@@ -146,6 +146,28 @@ curl -s -b /tmp/bff-cookies.txt $BFF/bff/presets | jq .
 
 ---
 
+## Role assignments (session cookie + `admin:roles:manage`)
+
+Most users get their roles from OIDC groups (`/bff/admin/group-roles`). For the few users no group
+covers, assign roles directly by OIDC `sub` (in Keycloak the user's UUID); these are added on top of
+their group roles and take effect at their next login.
+
+```bash
+# group -> role
+curl -s -b /tmp/bff-cookies.txt -X POST $BFF/bff/admin/group-roles \
+  -H 'Content-Type: application/json' -d '{"group":"team-data","role":"engineer"}'
+
+# individual user (sub) -> role
+curl -s -b /tmp/bff-cookies.txt -X POST $BFF/bff/admin/user-roles \
+  -H 'Content-Type: application/json' -d '{"sub":"3f2a9c1e-0000-4000-8000-000000000000","role":"admin"}'
+# {"id":1,"user_sub":"3f2a9c1e-...","role_name":"admin","created_by":"dev-user","created_at":"..."}
+
+curl -s -b /tmp/bff-cookies.txt $BFF/bff/admin/user-roles
+curl -s -b /tmp/bff-cookies.txt -X DELETE $BFF/bff/admin/user-roles/1   # 204
+```
+
+---
+
 ## Owner groups (session cookie + `admin:roles:manage`)
 
 Owner groups are the teams that own CRs. They are independent of roles. A user belongs to one when an OIDC group is mapped to it, or when their email / `user_id` is assigned directly. `user_id` is the claim named by `OIDC_USER_ID_CLAIM` (default `sub`). Membership is resolved at login and forwarded upstream as `X-User-Groups`.

@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/fusion-platform/fusion-bff/internal/api/middleware"
 	"github.com/fusion-platform/fusion-bff/internal/session"
@@ -12,6 +14,12 @@ import (
 func internalError(c *gin.Context, err error) {
 	middleware.LoggerFromCtx(c).Error("internal error", "error", err)
 	c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+}
+
+// isUniqueViolation reports whether err is a PostgreSQL unique-constraint violation.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 // actor identifies who performed an admin action, for audit logging.

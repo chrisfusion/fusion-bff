@@ -60,6 +60,9 @@ func NewRouter(
 		adminGroup.GET("/group-roles", adminH.ListGroupRoles)
 		adminGroup.POST("/group-roles", adminH.CreateGroupRole)
 		adminGroup.DELETE("/group-roles/:id", adminH.DeleteGroupRole)
+		adminGroup.GET("/user-roles", adminH.ListUserRoles)
+		adminGroup.POST("/user-roles", adminH.CreateUserRole)
+		adminGroup.DELETE("/user-roles/:id", adminH.DeleteUserRole)
 		adminGroup.GET("/rbac-config", adminH.RBACConfig)
 		if resourcePermH != nil {
 			adminGroup.GET("/resource-permissions", resourcePermH.List)

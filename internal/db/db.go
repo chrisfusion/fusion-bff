@@ -16,6 +16,14 @@ CREATE TABLE IF NOT EXISTS group_role_assignments (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (group_name, role_name)
 );
+CREATE TABLE IF NOT EXISTS user_role_assignments (
+    id         SERIAL PRIMARY KEY,
+    user_sub   TEXT NOT NULL,
+    role_name  TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_sub, role_name)
+);
 CREATE TABLE IF NOT EXISTS resource_permissions (
     id            SERIAL PRIMARY KEY,
     subject_type  TEXT NOT NULL CHECK (subject_type IN ('user','group','role')),

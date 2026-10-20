@@ -11,6 +11,15 @@ group_roles:
   platform-user:   [user]
   platform-viewer: [viewer]
 
+# user_roles assigns roles directly to individual users by OIDC "sub" claim (in
+# Keycloak the user's UUID) — for the few users (admins, special users) who cannot
+# be covered by an OIDC group. Added on top of the roles from their groups.
+# Same group_source semantics as group_roles: used for "jwt" and "both", ignored for
+# "db" (then manage them via /bff/admin/user-roles or rbacSeed.adminSubs).
+# Comment each entry with who it is — a sub is not human-readable.
+user_roles: {}
+#  3f2a9c1e-0000-4000-8000-000000000000: [admin]   # Jane Doe (platform ops)
+
 role_permissions:
   admin:
     - index:artifacts:read

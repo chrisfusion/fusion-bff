@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, fusion-wizard, and fusion-content.
-  version: 0.13.2
+  version: 0.14.0
   license:
     name: GPL-3.0
 servers:
@@ -376,6 +376,79 @@ paths:
       tags:
       - rbac-admin
       summary: Delete a group → role assignment
+      security:
+      - sessionCookie: []
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        '204':
+          description: Deleted
+        '400':
+          description: Invalid id
+        '404':
+          description: Not found
+  /bff/admin/user-roles:
+    get:
+      tags:
+      - rbac-admin
+      summary: List user (OIDC sub) → role assignments
+      description: Direct role assignments for individual users who cannot be covered by an OIDC group.
+        Added on top of the user's group roles; effective at the user's next login (Bearer requests
+        resolve per request). Requires admin:roles:manage.
+      security:
+      - sessionCookie: []
+      responses:
+        '200':
+          description: All DB-backed user-role assignments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserRoleRow'
+    post:
+      tags:
+      - rbac-admin
+      summary: Create a user (OIDC sub) → role assignment
+      security:
+      - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - sub
+              - role
+              properties:
+                sub:
+                  type: string
+                  description: OIDC "sub" claim of the user (in Keycloak the user's UUID); surrounding whitespace is trimmed
+                  example: 3f2a9c1e-0000-4000-8000-000000000000
+                role:
+                  type: string
+                  example: admin
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRoleRow'
+        '400':
+          description: sub and role are required
+        '409':
+          description: Assignment already exists
+  /bff/admin/user-roles/{id}:
+    delete:
+      tags:
+      - rbac-admin
+      summary: Delete a user (OIDC sub) → role assignment
       security:
       - sessionCookie: []
       parameters:
@@ -3988,9 +4061,24 @@ components:
       properties:
         id:
           type: integer
-        group:
+        group_name:
           type: string
-        role:
+        role_name:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    UserRoleRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_sub:
+          type: string
+          description: OIDC "sub" claim of the user
+        role_name:
           type: string
         created_by:
           type: string

@@ -41,16 +41,19 @@ spec:
                   key: {{ .Values.db.existingSecretKey }}
             - name: ADMIN_GROUP
               value: {{ required "rbacSeed.adminGroup is required when rbacSeed.enabled is true" .Values.rbacSeed.adminGroup | quote }}
+            - name: ADMIN_SUBS
+              value: {{ join "," (.Values.rbacSeed.adminSubs | default list) | quote }}
           command: ["/bin/sh", "-c"]
           args:
             - |
               set -eu
               # Table is created defensively so this job doesn't depend on ordering
               # relative to the app binary's own Migrate() step on first startup.
-              # Keep this DDL in sync with internal/db/db.go's group_role_assignments definition.
+              # Keep this DDL in sync with internal/db/db.go's group_role_assignments and
+              # user_role_assignments definitions.
               # NOTE: psql's :'var' substitution only works reading from a script/stdin,
               # NOT via -c "..." (verified against postgres:16-alpine) — hence the heredoc.
-              psql "${DB_DSN}" -v ON_ERROR_STOP=1 -v admin_group="${ADMIN_GROUP}" <<'SQL'
+              psql "${DB_DSN}" -v ON_ERROR_STOP=1 -v admin_group="${ADMIN_GROUP}" -v admin_subs="${ADMIN_SUBS}" <<'SQL'
               CREATE TABLE IF NOT EXISTS group_role_assignments (
                   id         SERIAL PRIMARY KEY,
                   group_name TEXT NOT NULL,
@@ -62,6 +65,20 @@ spec:
               INSERT INTO group_role_assignments (group_name, role_name, created_by)
               VALUES (:'admin_group', 'admin', 'helm-bootstrap')
               ON CONFLICT (group_name, role_name) DO NOTHING;
+              CREATE TABLE IF NOT EXISTS user_role_assignments (
+                  id         SERIAL PRIMARY KEY,
+                  user_sub   TEXT NOT NULL,
+                  role_name  TEXT NOT NULL,
+                  created_by TEXT NOT NULL DEFAULT '',
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  UNIQUE (user_sub, role_name)
+              );
+              INSERT INTO user_role_assignments (user_sub, role_name, created_by)
+              SELECT DISTINCT trim(s), 'admin', 'helm-bootstrap'
+              FROM unnest(string_to_array(:'admin_subs', ',')) AS s
+              WHERE trim(s) <> ''
+              ON CONFLICT (user_sub, role_name) DO NOTHING;
               SQL
               echo "admin group '${ADMIN_GROUP}' -> role 'admin' ensured in group_role_assignments"
+              echo "admin subs '${ADMIN_SUBS}' -> role 'admin' ensured in user_role_assignments"
 {{- end }}

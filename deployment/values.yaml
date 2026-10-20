@@ -211,10 +211,14 @@ postgresql:
 # Keycloak "groups" claim (stripped of its leading "/"), never from a specific
 # user id/email, so the configurable value here is the admin GROUP name — the
 # human admin becomes admin simply by being a member of that Keycloak group.
+# For admins who cannot be put into that group, adminSubs maps individual users
+# (by OIDC "sub" claim — in Keycloak the user's UUID) to "admin" in
+# user_role_assignments.
 # -----------------------------------------------------------------------------
 rbacSeed:
   enabled: false
   adminGroup: platform-admin   # OIDC/Keycloak group to map to the "admin" role
+  adminSubs: []                # OIDC sub values to map to the "admin" role directly
   image: postgres:16-alpine
   activeDeadlineSeconds: 60
   podSecurityContext:

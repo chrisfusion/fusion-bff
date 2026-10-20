@@ -41,9 +41,9 @@ type Engine struct {
 
 // NewEngine builds an Engine.
 // pool may be nil when group_source is "jwt" (no DB needed).
-// group_source "db"   — roles come from DB only (yaml group_roles ignored at runtime).
+// group_source "db"   — roles come from DB only (yaml group_roles/user_roles ignored at runtime).
 // group_source "both" — roles are the union of yaml and DB assignments.
-// default/"jwt"       — roles come from yaml group_roles only.
+// default/"jwt"       — roles come from yaml group_roles/user_roles only.
 // When pool is non-nil, resource-scoped permissions are always resolved from the DB
 // regardless of group_source.
 func NewEngine(cfg *RBACConfig, pool *pgxpool.Pool) *Engine {
@@ -53,11 +53,11 @@ func NewEngine(cfg *RBACConfig, pool *pgxpool.Pool) *Engine {
 		roleStore = NewDBGroupRoleStore(pool)
 	case "both":
 		roleStore = &MergedGroupRoleStore{
-			static:  NewStaticGroupRoleStore(cfg.GroupRoles),
+			static:  NewStaticGroupRoleStore(cfg.GroupRoles, cfg.UserRoles),
 			dbStore: NewDBGroupRoleStore(pool),
 		}
 	default:
-		roleStore = NewStaticGroupRoleStore(cfg.GroupRoles)
+		roleStore = NewStaticGroupRoleStore(cfg.GroupRoles, cfg.UserRoles)
 	}
 	return &Engine{resolver: JWTResolver{}, roleStore: roleStore, cfg: cfg, pool: pool}
 }
@@ -127,7 +127,8 @@ func (e *Engine) EffectivePreferredOwnerGroup(stored string, ownerGroups []strin
 	return e.defaultOwnerGroup
 }
 
-// Resolve returns the sorted roles and permissions for the given user.
+// Resolve returns the sorted roles and permissions for the given user: the roles of
+// all their groups plus any roles assigned directly to their sub.
 func (e *Engine) Resolve(ctx context.Context, sub string, jwtGroups []string) (roles, permissions []string, err error) {
 	groups, err := e.resolver.Resolve(ctx, sub, jwtGroups)
 	if err != nil {
@@ -141,6 +142,15 @@ func (e *Engine) Resolve(ctx context.Context, sub string, jwtGroups []string) (r
 			return nil, nil, rerr
 		}
 		for _, role := range groupRoles {
+			roleSet[role] = struct{}{}
+		}
+	}
+	if sub != "" {
+		userRoles, rerr := e.roleStore.RolesForUser(ctx, sub)
+		if rerr != nil {
+			return nil, nil, rerr
+		}
+		for _, role := range userRoles {
 			roleSet[role] = struct{}{}
 		}
 	}

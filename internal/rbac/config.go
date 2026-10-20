@@ -11,6 +11,7 @@ import (
 type RBACConfig struct {
 	GroupSource      string              `yaml:"group_source"`
 	GroupRoles       map[string][]string `yaml:"group_roles"`
+	UserRoles        map[string][]string `yaml:"user_roles"` // OIDC sub → roles, added on top of group roles
 	RolePermissions  map[string][]string `yaml:"role_permissions"`
 	RoutePermissions []RouteRule         `yaml:"route_permissions"`
 	// PermissionImplies defines cascading grants: if a resource-scoped grant exists

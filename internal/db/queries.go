@@ -84,6 +84,84 @@ func LoadAllGroupRoles(ctx context.Context, pool *pgxpool.Pool) (map[string][]st
 	return m, rows.Err()
 }
 
+// ── User role assignments ─────────────────────────────────────────────────────
+
+// UserRoleRow assigns a role directly to one user, identified by OIDC sub.
+type UserRoleRow struct {
+	ID        int       `json:"id"`
+	UserSub   string    `json:"user_sub"`
+	RoleName  string    `json:"role_name"`
+	CreatedBy string    `json:"created_by"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func ListUserRoles(ctx context.Context, pool *pgxpool.Pool) ([]UserRoleRow, error) {
+	rows, err := pool.Query(ctx,
+		`SELECT id, user_sub, role_name, created_by, created_at
+		 FROM user_role_assignments
+		 ORDER BY user_sub, role_name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []UserRoleRow
+	for rows.Next() {
+		var r UserRoleRow
+		if err := rows.Scan(&r.ID, &r.UserSub, &r.RoleName, &r.CreatedBy, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+func CreateUserRole(ctx context.Context, pool *pgxpool.Pool, sub, role, createdBy string) (UserRoleRow, error) {
+	var r UserRoleRow
+	err := pool.QueryRow(ctx,
+		`INSERT INTO user_role_assignments (user_sub, role_name, created_by)
+		 VALUES ($1, $2, $3)
+		 RETURNING id, user_sub, role_name, created_by, created_at`,
+		sub, role, createdBy,
+	).Scan(&r.ID, &r.UserSub, &r.RoleName, &r.CreatedBy, &r.CreatedAt)
+	return r, err
+}
+
+// DeleteUserRole deletes the assignment and returns it for audit logging.
+// found is false (with zero-value row) when no row matched id.
+func DeleteUserRole(ctx context.Context, pool *pgxpool.Pool, id int) (row UserRoleRow, found bool, err error) {
+	err = pool.QueryRow(ctx,
+		`DELETE FROM user_role_assignments WHERE id = $1 RETURNING id, user_sub, role_name, created_by, created_at`,
+		id,
+	).Scan(&row.ID, &row.UserSub, &row.RoleName, &row.CreatedBy, &row.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return UserRoleRow{}, false, nil
+		}
+		return UserRoleRow{}, false, err
+	}
+	return row, true, nil
+}
+
+// LoadRolesForUser returns the role names assigned directly to sub.
+func LoadRolesForUser(ctx context.Context, pool *pgxpool.Pool, sub string) ([]string, error) {
+	rows, err := pool.Query(ctx, `SELECT role_name FROM user_role_assignments WHERE user_sub = $1`, sub)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var roles []string
+	for rows.Next() {
+		var role string
+		if err := rows.Scan(&role); err != nil {
+			return nil, err
+		}
+		roles = append(roles, role)
+	}
+	return roles, rows.Err()
+}
+
 // ── Resource permissions ──────────────────────────────────────────────────────
 
 type ResourcePermRow struct {

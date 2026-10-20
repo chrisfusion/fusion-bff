@@ -81,6 +81,7 @@
 │  internal/rbac/engine.go                                         │
 │    Resolve(ctx, sub, jwtGroups)                                  │
 │      └─ GroupRoleStore.RolesForGroup() per group                 │
+│         + GroupRoleStore.RolesForUser(sub)  (direct assignments) │
 │           StaticGroupRoleStore  ← rbac.yaml (group_source: jwt) │
 │           DBGroupRoleStore      ← postgres  (group_source: db)  │
 │           MergedGroupRoleStore  ← both      (group_source: both)│
@@ -144,9 +145,9 @@ fusion-index-backend  GET /api/v1/artifacts
 Keycloak groups (JWT "groups" claim)
       │
       ▼
-GroupRoleStore.RolesForGroup(group)
-      │  StaticGroupRoleStore  ← rbac.yaml group_roles map
-      │  DBGroupRoleStore      ← group_role_assignments table
+GroupRoleStore.RolesForGroup(group)  ∪  GroupRoleStore.RolesForUser(sub)
+      │  StaticGroupRoleStore  ← rbac.yaml group_roles / user_roles maps
+      │  DBGroupRoleStore      ← group_role_assignments / user_role_assignments tables
       │  MergedGroupRoleStore  ← union of both
       ▼
 Roles[]  →  cfg.RolePermissions[role]  →  Permissions[]
@@ -214,20 +215,20 @@ internal/
   rbac/
     config.go        RBACConfig, RouteRule, LoadConfig
     engine.go        Engine — resolves groups → roles → permissions
-    store.go         GroupRoleStore interface
+    store.go         GroupRoleStore interface (RolesForGroup + RolesForUser by OIDC sub)
     static_store.go  StaticGroupRoleStore (rbac.yaml)
     db_store.go      DBGroupRoleStore (postgres)
     merged_store.go  MergedGroupRoleStore (both)
     route.go         MatchRoute — first-match rule evaluation, captures ResourceID; RoutePermission is a thin wrapper
   db/
-    db.go            Open + Migrate (group_role_assignments, resource_permissions, service_status_overrides, owner_groups, owner_group_oidc_mappings, owner_group_members, user_preferences tables)
+    db.go            Open + Migrate (group_role_assignments, user_role_assignments, resource_permissions, service_status_overrides, owner_groups, owner_group_oidc_mappings, owner_group_members, user_preferences tables)
     owner_groups.go  CRUD for the owner-group tables + LoadOwnerGroupsForUser (OIDC group ∪ email ∪ user_id) + EnsureOwnerGroup + per-user preferred group queries
-    queries.go       CRUD for the first three tables + LoadAllGroupRoles, LoadResourcePermsForUser, ListServiceStatuses
+    queries.go       CRUD for group/user role assignments, resource_permissions, service_status_overrides + LoadAllGroupRoles, LoadRolesForUser, LoadResourcePermsForUser, ListServiceStatuses
   api/
     handler/
       health.go      /health /livez /readyz
       auth.go        /bff/login, /bff/callback, /bff/logout, /bff/userinfo
-      admin.go       /bff/admin/group-roles, /bff/admin/rbac-config
+      admin.go       /bff/admin/group-roles, /bff/admin/user-roles, /bff/admin/rbac-config
       resource_permissions.go  /bff/admin/resource-permissions
       owner_groups.go /bff/admin/owner-groups, owner-group-mappings, owner-group-members
       system_health.go /bff/system-health (all users); /bff/admin/service-status (admin:health:manage)

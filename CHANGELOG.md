@@ -6,14 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ---
 
 ## [Unreleased]
-<!-- 2026-10-20 -->
+
+## [0.14.0] — 2026-10-20
+
+### Added
+- Direct role assignment by OIDC `sub` for the few users (admins, special users) who cannot be covered by an OIDC group: their roles are the union of their group roles and the roles assigned to their `sub`. Static via the new `user_roles` map in `rbac.yaml` (used for `group_source: jwt`/`both`), dynamic via the new `user_role_assignments` table and `GET/POST/DELETE /bff/admin/user-roles` (`admin:roles:manage`, audit-logged; used for `group_source: db`/`both`). Like group mappings, changes apply at the user's next login (Bearer requests resolve per request).
+- Helm `rbacSeed.adminSubs` (default `[]`): the RBAC seed Job also maps these `sub` values to the `admin` role in `user_role_assignments` (idempotent; creates the table defensively).
+- `rbac.yaml`: new `user` role (wizards + runs, weave read for the wizard pickers, content read — no forge/index/weave writes) mapped from group `platform-user`; UI-only permission `ui:expert` for `admin` and `engineer` (unlocks fusion-spectra's Expert mode, no route rule).
+- Documented `/bff/admin/user-roles` and `UserRoleRow` in `internal/docs/openapi.yaml`; README/ARCHITECTURE/EXAMPLE updated.
 
 ### Changed
 - `user` role gains `weave:monitoring:read` and `forge:builds:read` so common users can read the run and build logs of their wizard runs (fusion-spectra Logs panel).
-<!-- 2026-10-20 -->
 
-### Added
-- `rbac.yaml`: new `user` role (wizards + runs, weave read for the wizard pickers, content read — no forge/index/weave writes) mapped from group `platform-user`; UI-only permission `ui:expert` for `admin` and `engineer` (unlocks fusion-spectra's Expert mode, no route rule).
+### Fixed
+- `openapi.yaml` `GroupRoleRow` documented `group`/`role`; the API returns `group_name`/`role_name`.
 
 ## [0.13.2] — 2026-10-20
 

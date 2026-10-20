@@ -25,3 +25,7 @@ func (s *DBGroupRoleStore) RolesForGroup(ctx context.Context, group string) ([]s
 	}
 	return m[group], nil
 }
+
+func (s *DBGroupRoleStore) RolesForUser(ctx context.Context, sub string) ([]string, error) {
+	return db.LoadRolesForUser(ctx, s.pool, sub)
+}
