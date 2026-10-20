@@ -100,9 +100,12 @@ role_permissions:
     - ui:expert
   # Common users: wizards + their runs only (Simple mode in fusion-spectra). Provisioning runs
   # under fusion-wizard's own SA, so no forge/index/weave write permissions are needed.
-  # weave:resources:read feeds the wizards' image-prefix and external-auth pickers.
+  # weave:resources:read feeds the wizards' image-prefix and external-auth pickers;
+  # weave:monitoring:read and forge:builds:read serve the run and build logs on the wizard run page.
   user:
     - weave:resources:read
+    - weave:monitoring:read
+    - forge:builds:read
     - wizard:definitions:read
     - wizard:runs:read
     - wizard:runs:create

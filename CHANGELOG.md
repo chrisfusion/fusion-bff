@@ -8,6 +8,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 <!-- 2026-10-20 -->
 
+### Changed
+- `user` role gains `weave:monitoring:read` and `forge:builds:read` so common users can read the run and build logs of their wizard runs (fusion-spectra Logs panel).
+<!-- 2026-10-20 -->
+
 ### Added
 - `rbac.yaml`: new `user` role (wizards + runs, weave read for the wizard pickers, content read — no forge/index/weave writes) mapped from group `platform-user`; UI-only permission `ui:expert` for `admin` and `engineer` (unlocks fusion-spectra's Expert mode, no route rule).
 
