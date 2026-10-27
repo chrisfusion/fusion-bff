@@ -28,6 +28,7 @@ role_permissions:
     - index:versions:write
     - index:versions:delete
     - index:types:manage
+    - index:retention:manage
     - index:metrics:read
     - forge:builds:read
     - forge:builds:create
@@ -150,12 +151,17 @@ permission_implies:
 # resource_type enables resource-scoped fallback checks (first * in path = resource ID).
 route_permissions:
   - { method: DELETE, path: /api/index/api/v1/artifacts/*/versions/*, permission: index:versions:delete, resource_type: artifact }
+  - { method: DELETE, path: /api/index/api/v1/artifacts/*/versions,   permission: index:versions:delete, resource_type: artifact }
+  - { method: DELETE, path: /api/index/api/v1/artifacts/*/retention,  permission: index:retention:manage, resource_type: artifact }
+  - { method: PUT,    path: /api/index/api/v1/artifacts/*/retention,  permission: index:retention:manage, resource_type: artifact }
+  - { method: DELETE, path: /api/index/api/v1/types/*/retention,      permission: index:retention:manage }
+  - { method: PUT,    path: /api/index/api/v1/types/*/retention,      permission: index:retention:manage }
+  - { method: DELETE, path: /api/index/api/v1/artifacts/*/tags/*,     permission: index:artifacts:write }
   - { method: DELETE, path: /api/index/api/v1/artifacts/*,            permission: index:artifacts:delete, resource_type: artifact }
   - { method: POST,   path: /api/index/api/v1/artifacts/*/versions/*/files, permission: index:versions:write }
   - { method: POST,   path: /api/index/api/v1/artifacts/*/versions,   permission: index:versions:write }
   - { method: POST,   path: /api/index/api/v1/artifacts,              permission: index:artifacts:write }
   - { method: PUT,    path: /api/index/api/v1/artifacts/*/tags/*,     permission: index:artifacts:write }
-  - { method: DELETE, path: /api/index/api/v1/artifacts/*/tags/*,     permission: index:artifacts:write }
   - { method: PUT,    path: /api/index/api/v1/artifacts/*,            permission: index:artifacts:write }
   - { method: "*",    path: /api/index/api/v1/types*,                 permission: index:types:manage }
   - { method: DELETE, path: /api/index/api/v1/admin/*,               permission: index:admin:manage }

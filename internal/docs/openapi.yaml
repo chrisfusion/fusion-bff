@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, fusion-wizard, and fusion-content.
-  version: 0.14.2
+  version: 0.14.5
   license:
     name: GPL-3.0
 servers:
@@ -548,8 +548,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ResourcePermRow'
         '400':
-          description: All fields are required
-          or invalid subject_type: null
+          description: All fields are required or invalid subject_type
         '409':
           description: Grant already exists
   /bff/admin/resource-permissions/{id}:
@@ -840,8 +839,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ServiceStatusRow'
         '400':
-          description: Unknown service
-          or invalid status: null
+          description: Unknown service or invalid status
         '503':
           description: Database not configured
     delete:
@@ -1561,44 +1559,121 @@ paths:
           $ref: '#/components/responses/ForgeNotFound'
         '500':
           $ref: '#/components/responses/ForgeInternalError'
+  /api/index/q/metrics:
+    get:
+      tags:
+      - index
+      summary: Registry aggregate metrics
+      description: 'Point-in-time counts from one read-only snapshot transaction, cached for `METRICS_CACHE_TTL`
+        (default 60s; concurrent refreshes are collapsed into one). The maintenance indicators match the
+        read filters and admin cleanups: `artifactsWithoutVersions` = `GET /artifacts?maxVersions=0`, `artifactsWithoutFiles`
+        = `?minVersions=1&hasFiles=false`, `versionsWithoutFiles` = `GET /versions?hasFiles=false`, `brokenTags`
+        = `GET /tags?broken=true`, `unusedTypes` = `GET /types?unused=true`. Always public — not behind
+        the `/api/v1` auth middleware.'
+      x-required-permission: index:metrics:read
+      responses:
+        '200':
+          description: Metrics snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexMetricsSnapshot'
+        '500':
+          description: Database error while refreshing the snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
   /api/index/api/v1/artifacts:
     get:
       tags:
       - index
       summary: List artifacts
-      description: |
-        Filter precedence: type > name > tag. `type` is repeatable for OR semantics.
+      description: 'Returns a paginated list of artifacts. All given filters combine with AND (`type` itself
+        is OR across its values). The maintenance views of the admin API are plain filters here, available
+        to every reader: `maxVersions=0` (no versions), `minVersions=1&hasFiles=false` (versions but no
+        files), `hasIncompleteFiles=true` (PENDING/ERROR uploads). `versionCount` and `largestVersionBytes`
+        are stored per artifact and kept up to date by the database, so sorting by them costs no aggregation.'
       x-required-permission: index:artifacts:read
       parameters:
-      - name: page
-        in: query
-        schema:
-          type: integer
-          minimum: 0
-          default: 0
-      - name: pageSize
-        in: query
-        schema:
-          type: integer
-          minimum: 1
-          default: 20
+      - $ref: '#/components/parameters/IndexPage'
+      - $ref: '#/components/parameters/IndexPageSize'
       - name: name
         in: query
+        required: false
+        description: Filter by full name prefix (e.g. `org.platform`)
         schema:
           type: string
-        description: Filter by full name prefix
       - name: tag
         in: query
+        required: false
+        description: Filter artifacts that have this tag assigned
         schema:
           type: string
       - name: type
         in: query
-        style: form
-        explode: true
+        required: false
+        description: Filter artifacts that have at least one of the given types assigned. Repeatable for
+          OR semantics (e.g. `?type=ml-model&type=dataset`).
         schema:
           type: array
           items:
             type: string
+        style: form
+        explode: true
+      - $ref: '#/components/parameters/IndexOlderThanFilter'
+      - name: minVersions
+        in: query
+        description: Only artifacts with at least this many versions.
+        schema:
+          type: integer
+          minimum: 0
+      - name: maxVersions
+        in: query
+        description: Only artifacts with at most this many versions (`0` = artifacts without versions).
+        schema:
+          type: integer
+          minimum: 0
+      - $ref: '#/components/parameters/IndexHasFiles'
+      - $ref: '#/components/parameters/IndexHasIncompleteFiles'
+      - name: missingTag
+        in: query
+        description: Only artifacts that do NOT have this tag (e.g. `latest`).
+        schema:
+          type: string
+      - name: minTotalBytes
+        in: query
+        description: Only artifacts whose versions total at least this many bytes.
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+      - name: hasRetention
+        in: query
+        description: Whether a retention rule applies (own policy or via one of its types).
+        schema:
+          type: boolean
+      - name: sort
+        in: query
+        description: '`largestVersion` = byte size of the artifact''s largest version (sum of its AVAILABLE
+          files), `totalSize` = bytes of all its versions.'
+        schema:
+          type: string
+          enum:
+          - createdAt
+          - name
+          - versionCount
+          - largestVersion
+          - totalSize
+          default: createdAt
+      - name: order
+        in: query
+        description: Defaults to `asc` for `name`, `desc` otherwise.
+        schema:
+          type: string
+          enum:
+          - asc
+          - desc
       responses:
         '200':
           description: Paginated artifact list
@@ -1606,6 +1681,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IndexArtifactPage'
+        '400':
+          description: Invalid filter or sort value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
     post:
       tags:
       - index
@@ -1625,7 +1706,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/IndexArtifactResponse'
         '400':
-          $ref: '#/components/responses/IndexBadRequest'
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '409':
           description: An artifact with this full name already exists
           content:
@@ -1634,12 +1719,7 @@ paths:
                 $ref: '#/components/schemas/IndexError'
   /api/index/api/v1/artifacts/{id}:
     parameters:
-    - name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
+    - $ref: '#/components/parameters/IndexArtifactId'
     get:
       tags:
       - index
@@ -1653,7 +1733,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/IndexArtifactResponse'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
     put:
       tags:
       - index
@@ -1673,9 +1757,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/IndexArtifactResponse'
         '400':
-          $ref: '#/components/responses/IndexBadRequest'
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
     delete:
       tags:
       - index
@@ -1687,21 +1779,33 @@ paths:
         '204':
           description: Artifact deleted
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
   /api/index/api/v1/artifacts/{id}/versions:
     parameters:
-    - name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
+    - $ref: '#/components/parameters/IndexArtifactId'
     get:
       tags:
       - index
       summary: List versions
-      description: Ordered newest first (major, minor, patch DESC).
+      description: Returns the artifact's versions, newest first (major, minor, patch DESC). Accepts the
+        same filters as the bulk delete on this path (combined with AND), so a UI can show what a cleanup
+        would hit; add `deletable=true` to see exactly the versions the DELETE would remove.
       x-required-permission: index:artifacts:read
+      parameters:
+      - $ref: '#/components/parameters/IndexKeepLast'
+      - $ref: '#/components/parameters/IndexOlderThanFilter'
+      - $ref: '#/components/parameters/IndexVersionFrom'
+      - $ref: '#/components/parameters/IndexVersionBelow'
+      - $ref: '#/components/parameters/IndexVersionList'
+      - $ref: '#/components/parameters/IndexHasFiles'
+      - $ref: '#/components/parameters/IndexHasIncompleteFiles'
+      - $ref: '#/components/parameters/IndexMinBytes'
+      - $ref: '#/components/parameters/IndexMaxBytes'
+      - $ref: '#/components/parameters/IndexDeletable'
       responses:
         '200':
           description: Version list
@@ -1711,14 +1815,24 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/IndexVersionResponse'
+        '400':
+          description: Invalid filter value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
     post:
       tags:
       - index
       summary: Create version
-      description: |
-        Tags listed in tags[] are atomically assigned to this version (upsert — a tag previously on another version moves here).
+      description: Creates a new version. Tags listed in `tags[]` are atomically assigned to this version
+        (upsert semantics — a tag previously on another version moves here).
       x-required-permission: index:versions:write
       requestBody:
         required: true
@@ -1734,29 +1848,100 @@ paths:
               schema:
                 $ref: '#/components/schemas/IndexVersionResponse'
         '400':
-          $ref: '#/components/responses/IndexBadRequest'
+          description: Invalid request body or malformed semver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '409':
           description: Version already exists for this artifact
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/IndexError'
+    delete:
+      tags:
+      - index
+      summary: Bulk delete versions
+      description: Deletes the versions of this artifact matching the filters, with their files. All given
+        filters must match (AND); at least one is required. Versions a tag points at, and every version
+        of an artifact carrying the protection tag, are never deleted and are counted as `skipped`. Files
+        of deleted versions are removed from storage (best-effort, after the DB commit).
+      x-required-permission: index:versions:delete
+      x-resource-type: artifact
+      parameters:
+      - $ref: '#/components/parameters/IndexKeepLast'
+      - $ref: '#/components/parameters/IndexOlderThanFilter'
+      - $ref: '#/components/parameters/IndexVersionFrom'
+      - $ref: '#/components/parameters/IndexVersionBelow'
+      - $ref: '#/components/parameters/IndexVersionList'
+      - $ref: '#/components/parameters/IndexHasFiles'
+      - $ref: '#/components/parameters/IndexHasIncompleteFiles'
+      - $ref: '#/components/parameters/IndexMinBytes'
+      - $ref: '#/components/parameters/IndexMaxBytes'
+      - $ref: '#/components/parameters/IndexDryRun'
+      responses:
+        '200':
+          description: Deleted (or, with dryRun, deletable) versions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexBulkVersionDeleteResponse'
+        '400':
+          description: No filter given or invalid filter value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+        '404':
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/versions:
+    get:
+      tags:
+      - index
+      summary: List versions across all artifacts
+      description: Paginated, ordered by artifact then newest version first. Same filters as `DELETE /api/v1/admin/versions`
+        — its read-only counterpart for every reader.
+      x-required-permission: index:artifacts:read
+      parameters:
+      - $ref: '#/components/parameters/IndexPage'
+      - $ref: '#/components/parameters/IndexPageSize'
+      - $ref: '#/components/parameters/IndexKeepLast'
+      - $ref: '#/components/parameters/IndexOlderThanFilter'
+      - $ref: '#/components/parameters/IndexVersionFrom'
+      - $ref: '#/components/parameters/IndexVersionBelow'
+      - $ref: '#/components/parameters/IndexHasFiles'
+      - $ref: '#/components/parameters/IndexHasIncompleteFiles'
+      - $ref: '#/components/parameters/IndexMinBytes'
+      - $ref: '#/components/parameters/IndexMaxBytes'
+      - $ref: '#/components/parameters/IndexDeletable'
+      responses:
+        '200':
+          description: Paginated version list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexVersionPage'
+        '400':
+          description: Invalid filter value (`version` is per artifact only)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
   /api/index/api/v1/artifacts/{id}/versions/{semver}:
     parameters:
-    - name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
-    - name: semver
-      in: path
-      required: true
-      schema:
-        type: string
-        pattern: ^\d+\.\d+\.\d+$
+    - $ref: '#/components/parameters/IndexArtifactId'
+    - $ref: '#/components/parameters/IndexSemver'
     get:
       tags:
       - index
@@ -1770,9 +1955,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/IndexVersionResponse'
         '400':
-          $ref: '#/components/responses/IndexBadRequest'
+          description: Malformed semver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
     delete:
       tags:
       - index
@@ -1784,29 +1977,130 @@ paths:
         '204':
           description: Version deleted
         '400':
-          $ref: '#/components/responses/IndexBadRequest'
+          description: Malformed semver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/tags:
+    get:
+      tags:
+      - index
+      summary: List tags across all artifacts
+      description: Paginated, ordered by artifact name then tag. `broken=true` lists tags whose version
+        has no AVAILABLE file — resolving them yields nothing downloadable.
+      x-required-permission: index:artifacts:read
+      parameters:
+      - $ref: '#/components/parameters/IndexPage'
+      - $ref: '#/components/parameters/IndexPageSize'
+      - name: tag
+        in: query
+        description: Exact tag name (e.g. `latest`).
+        schema:
+          type: string
+      - name: broken
+        in: query
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Paginated tag list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexTagListPage'
+        '400':
+          description: Invalid filter value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/artifacts/{id}/retention:
+    parameters:
+    - $ref: '#/components/parameters/IndexArtifactId'
+    get:
+      tags:
+      - index
+      summary: Effective retention rule of an artifact
+      description: The artifact's own policy if it has one, otherwise the most conservative merge of its
+        types' policies (per field the maximum). `versionFilter` is the matching query string for the version
+        list / bulk delete, with `olderThan` computed now.
+      x-required-permission: index:artifacts:read
+      responses:
+        '200':
+          description: Effective rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexEffectiveRetention'
+        '404':
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+    put:
+      tags:
+      - index
+      summary: Set the artifact's own retention policy
+      x-required-permission: index:retention:manage
+      x-resource-type: artifact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexSetRetentionRequest'
+      responses:
+        '200':
+          description: Stored policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexRetentionPolicy'
+        '400':
+          description: Neither keepLast nor maxAgeDays, or a value < 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+        '404':
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+    delete:
+      tags:
+      - index
+      summary: Remove the artifact's own retention policy
+      x-required-permission: index:retention:manage
+      x-resource-type: artifact
+      responses:
+        '204':
+          description: Removed
+        '404':
+          description: No policy on this artifact
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
   /api/index/api/v1/artifacts/{id}/tags/{tag}:
     parameters:
-    - name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
-    - name: tag
-      in: path
-      required: true
-      schema:
-        type: string
-        maxLength: 255
+    - $ref: '#/components/parameters/IndexArtifactId'
+    - $ref: '#/components/parameters/IndexTag'
     put:
       tags:
       - index
       summary: Assign tag to a version
-      description: Atomically assigns the tag to the specified version; moves it if previously assigned
-        elsewhere.
+      description: Atomically assigns the tag to the specified version. If the tag was previously assigned
+        to another version it is moved.
       x-required-permission: index:artifacts:write
       requestBody:
         required: true
@@ -1822,9 +2116,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/IndexTagResponse'
         '400':
-          $ref: '#/components/responses/IndexBadRequest'
+          description: Invalid request body or malformed semver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Artifact or version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
     delete:
       tags:
       - index
@@ -1834,26 +2136,34 @@ paths:
         '204':
           description: Tag deleted
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Tag not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
   /api/index/api/v1/artifacts/{id}/versions/{semver}/files:
     parameters:
-    - name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
-    - name: semver
-      in: path
-      required: true
-      schema:
-        type: string
-        pattern: ^\d+\.\d+\.\d+$
+    - $ref: '#/components/parameters/IndexArtifactId'
+    - $ref: '#/components/parameters/IndexSemver'
     get:
       tags:
       - index
       summary: List files
       x-required-permission: index:artifacts:read
+      parameters:
+      - name: status
+        in: query
+        description: Only files with these statuses (repeatable, e.g. `?status=PENDING&status=ERROR`).
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - PENDING
+            - AVAILABLE
+            - ERROR
       responses:
         '200':
           description: File list
@@ -1864,14 +2174,23 @@ paths:
                 items:
                   $ref: '#/components/schemas/IndexFileResponse'
         '400':
-          $ref: '#/components/responses/IndexBadRequest'
+          description: Malformed semver or unknown status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Artifact or version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
     post:
       tags:
       - index
       summary: Upload file
-      description: multipart/form-data with a `file` field; name must be unique within the version.
+      description: Uploads a file to the version using multipart/form-data with a `file` field. The file
+        name must be unique within the version. Status is set to AVAILABLE on success.
       x-required-permission: index:versions:write
       requestBody:
         required: true
@@ -1893,9 +2212,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/IndexFileResponse'
         '400':
-          $ref: '#/components/responses/IndexBadRequest'
+          description: Missing file field or malformed semver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Artifact or version not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '409':
           description: A file with this name already exists for this version
           content:
@@ -1904,24 +2231,9 @@ paths:
                 $ref: '#/components/schemas/IndexError'
   /api/index/api/v1/artifacts/{id}/versions/{semver}/files/{fileId}:
     parameters:
-    - name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
-    - name: semver
-      in: path
-      required: true
-      schema:
-        type: string
-        pattern: ^\d+\.\d+\.\d+$
-    - name: fileId
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
+    - $ref: '#/components/parameters/IndexArtifactId'
+    - $ref: '#/components/parameters/IndexSemver'
+    - $ref: '#/components/parameters/IndexFileId'
     get:
       tags:
       - index
@@ -1935,67 +2247,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/IndexFileResponse'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
     delete:
       tags:
       - index
       summary: Delete file
-      description: |
-        RBAC note: matches the versions/*/… rule ahead of the artifacts/* rule (trailing wildcard absorbs the remaining path segments), so this actually requires index:versions:delete, not index:artifacts:delete — verified via MatchRoute.
+      description: Deletes the file record and its storage object.
       x-required-permission: index:versions:delete
       x-resource-type: artifact
       responses:
         '204':
           description: File deleted
         '404':
-          $ref: '#/components/responses/IndexNotFound'
-  /api/index/api/v1/artifacts/{id}/versions/{semver}/files/{fileId}/download:
-    parameters:
-    - name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
-    - name: semver
-      in: path
-      required: true
-      schema:
-        type: string
-        pattern: ^\d+\.\d+\.\d+$
-    - name: fileId
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
-    get:
-      tags:
-      - index
-      summary: Download file
-      description: Streams the file content with a Content-Disposition header for save-as.
-      x-required-permission: index:artifacts:read
-      responses:
-        '200':
-          description: File stream
-          headers:
-            Content-Disposition:
-              schema:
-                type: string
-              example: attachment; filename="model.onnx"
+          description: File not found
           content:
-            application/octet-stream:
+            application/json:
               schema:
-                type: string
-                format: binary
-        '404':
-          $ref: '#/components/responses/IndexNotFound'
+                $ref: '#/components/schemas/IndexError'
   /api/index/api/v1/types:
     get:
       tags:
       - index
       summary: List types
+      description: Returns artifact types ordered by name.
       x-required-permission: index:types:manage
+      parameters:
+      - name: unused
+        in: query
+        description: '`true` = only types assigned to no artifact, `false` = only assigned ones.'
+        schema:
+          type: boolean
       responses:
         '200':
           description: Type list
@@ -2024,7 +2309,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/IndexTypeResponse'
         '400':
-          $ref: '#/components/responses/IndexBadRequest'
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '409':
           description: A type with this name already exists
           content:
@@ -2033,12 +2322,7 @@ paths:
                 $ref: '#/components/schemas/IndexError'
   /api/index/api/v1/types/{typeId}:
     parameters:
-    - name: typeId
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
+    - $ref: '#/components/parameters/IndexTypeId'
     get:
       tags:
       - index
@@ -2052,7 +2336,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/IndexTypeResponse'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Type not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
     put:
       tags:
       - index
@@ -2072,9 +2360,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/IndexTypeResponse'
         '400':
-          $ref: '#/components/responses/IndexBadRequest'
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Type not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
         '409':
           description: A type with this name already exists
           content:
@@ -2085,25 +2381,106 @@ paths:
       tags:
       - index
       summary: Delete type
-      description: Removes the type and all its artifact assignments (cascade).
+      description: Deletes the type and removes all its artifact assignments (cascade).
       x-required-permission: index:types:manage
       responses:
         '204':
           description: Type deleted
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Type not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/types/{typeId}/retention:
+    parameters:
+    - $ref: '#/components/parameters/IndexTypeId'
+    get:
+      tags:
+      - index
+      summary: Retention policy of a type
+      x-required-permission: index:types:manage
+      responses:
+        '200':
+          description: Stored policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexRetentionPolicy'
+        '404':
+          description: No policy on this type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+    put:
+      tags:
+      - index
+      summary: Set the type's retention policy
+      description: Applies to every artifact of this type that has no policy of its own.
+      x-required-permission: index:retention:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexSetRetentionRequest'
+      responses:
+        '200':
+          description: Stored policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexRetentionPolicy'
+        '400':
+          description: Neither keepLast nor maxAgeDays, or a value < 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+        '404':
+          description: Type not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+    delete:
+      tags:
+      - index
+      summary: Remove the type's retention policy
+      x-required-permission: index:retention:manage
+      responses:
+        '204':
+          description: Removed
+        '404':
+          description: No policy on this type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/retention-policies:
+    get:
+      tags:
+      - index
+      summary: List all retention policies
+      x-required-permission: index:artifacts:read
+      responses:
+        '200':
+          description: All stored policies with artifact or type name
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IndexRetentionPolicy'
   /api/index/api/v1/artifacts/{id}/types:
     parameters:
-    - name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
+    - $ref: '#/components/parameters/IndexArtifactId'
     get:
       tags:
       - index
       summary: List artifact types
+      description: Returns all types assigned to the artifact, ordered by name.
       x-required-permission: index:artifacts:read
       responses:
         '200':
@@ -2115,26 +2492,21 @@ paths:
                 items:
                   $ref: '#/components/schemas/IndexTypeResponse'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
   /api/index/api/v1/artifacts/{id}/types/{typeId}:
     parameters:
-    - name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
-    - name: typeId
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
+    - $ref: '#/components/parameters/IndexArtifactId'
+    - $ref: '#/components/parameters/IndexTypeId'
     put:
       tags:
       - index
       summary: Assign type to artifact
-      description: Idempotent — assigning an already-assigned type returns 200 without error.
+      description: Assigns the type to the artifact. Idempotent — assigning an already-assigned type returns
+        200 without error.
       x-required-permission: index:artifacts:write
       responses:
         '200':
@@ -2144,12 +2516,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/IndexTypeResponse'
         '404':
-          $ref: '#/components/responses/IndexNotFound'
+          description: Artifact or type not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
     delete:
       tags:
       - index
       summary: Remove type from artifact
-      description: |
+      description: |-
+        Removes the type assignment from the artifact. Returns 404 if not assigned.
+
         RBAC note: unexpectedly matches the DELETE .../artifacts/* rule (trailing wildcard absorbs "types/{typeId}"), so this requires index:artifacts:delete — the same permission as deleting the whole artifact — verified via MatchRoute. Likely an unintended coupling worth a follow-up rbac.yaml decision.
       x-required-permission: index:artifacts:delete
       x-resource-type: artifact
@@ -2157,16 +2535,309 @@ paths:
         '204':
           description: Type removed
         '404':
-          $ref: '#/components/responses/IndexNotFound'
-  /api/index/q/metrics:
+          description: Artifact not found, type not found, or type not assigned to artifact
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/artifacts/{id}/versions/{semver}/files/{fileId}/download:
+    parameters:
+    - $ref: '#/components/parameters/IndexArtifactId'
+    - $ref: '#/components/parameters/IndexSemver'
+    - $ref: '#/components/parameters/IndexFileId'
     get:
       tags:
       - index
-      summary: Prometheus metrics
-      x-required-permission: index:metrics:read
+      summary: Download file
+      description: Streams the file content. Responds with a `Content-Disposition` header for save-as.
+      x-required-permission: index:artifacts:read
       responses:
         '200':
-          description: Prometheus text-format metrics
+          description: File stream
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              example: attachment; filename="model.onnx"
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/admin/artifacts/empty:
+    get:
+      tags:
+      - index
+      summary: List artifacts with no versions
+      description: Returns a paginated list of artifacts that have no versions and were created before `olderThan`.
+        Useful for finding abandoned artifact registrations.
+      x-required-permission: index:admin:manage
+      parameters:
+      - $ref: '#/components/parameters/IndexOlderThan'
+      - $ref: '#/components/parameters/IndexPage'
+      - $ref: '#/components/parameters/IndexPageSize'
+      responses:
+        '200':
+          description: Paginated list of empty artifacts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexArtifactPage'
+        '400':
+          description: Missing or invalid olderThan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+    delete:
+      tags:
+      - index
+      summary: Bulk delete artifacts with no versions
+      description: Deletes all artifacts that have no versions and were created before `olderThan`. Artifacts
+        carrying the configured protection tag are skipped and counted in `skipped`.
+      x-required-permission: index:admin:manage
+      parameters:
+      - $ref: '#/components/parameters/IndexOlderThan'
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexBulkDeleteResponse'
+        '400':
+          description: Missing or invalid olderThan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/admin/versions:
+    delete:
+      tags:
+      - index
+      summary: Bulk delete versions across all artifacts
+      description: Applies the version bulk-delete filters to every artifact (`keepLast` counts per artifact).
+        The `version` list filter is only available per artifact. All given filters must match (AND); at
+        least one is required. Versions a tag points at, and every version of an artifact carrying the protection
+        tag, are never deleted and are counted as `skipped`. Files of deleted versions are removed from
+        storage (best-effort, after the DB commit).
+      x-required-permission: index:admin:manage
+      parameters:
+      - $ref: '#/components/parameters/IndexKeepLast'
+      - $ref: '#/components/parameters/IndexOlderThanFilter'
+      - $ref: '#/components/parameters/IndexVersionFrom'
+      - $ref: '#/components/parameters/IndexVersionBelow'
+      - $ref: '#/components/parameters/IndexHasFiles'
+      - $ref: '#/components/parameters/IndexHasIncompleteFiles'
+      - $ref: '#/components/parameters/IndexMinBytes'
+      - $ref: '#/components/parameters/IndexMaxBytes'
+      - $ref: '#/components/parameters/IndexDryRun'
+      responses:
+        '200':
+          description: Deleted (or, with dryRun, deletable) versions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexBulkVersionDeleteResponse'
+        '400':
+          description: No filter given or invalid filter value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/admin/versions/empty:
+    get:
+      tags:
+      - index
+      summary: List versions with no files
+      description: Returns a paginated list of versions that have no files and were created before `olderThan`.
+      x-required-permission: index:admin:manage
+      parameters:
+      - $ref: '#/components/parameters/IndexOlderThan'
+      - $ref: '#/components/parameters/IndexPage'
+      - $ref: '#/components/parameters/IndexPageSize'
+      responses:
+        '200':
+          description: Paginated list of versions without files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexVersionPage'
+        '400':
+          description: Missing or invalid olderThan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+    delete:
+      tags:
+      - index
+      summary: Bulk delete versions with no files
+      description: Deletes all versions that have no files and were created before `olderThan`. Versions
+        whose parent artifact carries the configured protection tag are skipped.
+      x-required-permission: index:admin:manage
+      parameters:
+      - $ref: '#/components/parameters/IndexOlderThan'
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexBulkDeleteResponse'
+        '400':
+          description: Missing or invalid olderThan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/admin/types/unused:
+    get:
+      tags:
+      - index
+      summary: List types assigned to no artifact
+      x-required-permission: index:admin:manage
+      parameters:
+      - $ref: '#/components/parameters/IndexOlderThan'
+      - $ref: '#/components/parameters/IndexPage'
+      - $ref: '#/components/parameters/IndexPageSize'
+      responses:
+        '200':
+          description: Paginated list of unused types
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexTypePage'
+        '400':
+          description: Missing or invalid olderThan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+    delete:
+      tags:
+      - index
+      summary: Bulk delete types assigned to no artifact
+      description: Their retention policies are deleted with them.
+      x-required-permission: index:admin:manage
+      parameters:
+      - $ref: '#/components/parameters/IndexOlderThan'
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexBulkDeleteResponse'
+        '400':
+          description: Missing or invalid olderThan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/admin/files/incomplete:
+    get:
+      tags:
+      - index
+      summary: List incomplete (PENDING/ERROR) files
+      description: Returns a paginated list of files whose upload never completed — status `PENDING` (interrupted
+        upload) or `ERROR` (failed upload) — and were created before `olderThan`. Such files are never downloadable
+        but keep their version from counting as file-less.
+      x-required-permission: index:admin:manage
+      parameters:
+      - $ref: '#/components/parameters/IndexOlderThan'
+      - $ref: '#/components/parameters/IndexPage'
+      - $ref: '#/components/parameters/IndexPageSize'
+      responses:
+        '200':
+          description: Paginated list of incomplete files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexFilePage'
+        '400':
+          description: Missing or invalid olderThan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+    delete:
+      tags:
+      - index
+      summary: Bulk delete incomplete (PENDING/ERROR) files
+      description: Deletes all `PENDING`/`ERROR` files created before `olderThan`, including (best-effort)
+        any partial object a failed upload left in storage. Files of artifacts carrying the configured protection
+        tag are skipped. Choose `olderThan` well in the past so uploads still in flight are not hit.
+      x-required-permission: index:admin:manage
+      parameters:
+      - $ref: '#/components/parameters/IndexOlderThan'
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexBulkDeleteResponse'
+        '400':
+          description: Missing or invalid olderThan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+  /api/index/api/v1/admin/artifacts/no-files:
+    get:
+      tags:
+      - index
+      summary: List artifacts with versions but no files
+      description: Returns a paginated list of artifacts that have at least one version but no files on
+        any version, and were created before `olderThan`.
+      x-required-permission: index:admin:manage
+      parameters:
+      - $ref: '#/components/parameters/IndexOlderThan'
+      - $ref: '#/components/parameters/IndexPage'
+      - $ref: '#/components/parameters/IndexPageSize'
+      responses:
+        '200':
+          description: Paginated list of artifacts without files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexArtifactPage'
+        '400':
+          description: Missing or invalid olderThan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
+    delete:
+      tags:
+      - index
+      summary: Bulk delete artifacts with versions but no files
+      description: Deletes all artifacts (and their versions via cascade) that have at least one version
+        but no files anywhere, and were created before `olderThan`. Artifacts carrying the configured protection
+        tag are skipped.
+      x-required-permission: index:admin:manage
+      parameters:
+      - $ref: '#/components/parameters/IndexOlderThan'
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexBulkDeleteResponse'
+        '400':
+          description: Missing or invalid olderThan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexError'
   /api/weave/api/v1/jobtemplates:
     get:
       tags:
@@ -4094,6 +4765,159 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: OIDC access token, accepted as a fallback when no session cookie is present
+  parameters:
+    IndexArtifactId:
+      name: id
+      in: path
+      required: true
+      description: Artifact ID
+      schema:
+        type: integer
+        format: int64
+    IndexSemver:
+      name: semver
+      in: path
+      required: true
+      description: Semantic version string (`major.minor.patch`)
+      schema:
+        type: string
+        pattern: ^\d+\.\d+\.\d+$
+        example: 1.2.3
+    IndexFileId:
+      name: fileId
+      in: path
+      required: true
+      description: File ID
+      schema:
+        type: integer
+        format: int64
+    IndexTag:
+      name: tag
+      in: path
+      required: true
+      description: Tag name (e.g. `latest`, `stable`)
+      schema:
+        type: string
+        maxLength: 255
+    IndexTypeId:
+      name: typeId
+      in: path
+      required: true
+      description: Type ID
+      schema:
+        type: integer
+        format: int64
+    IndexPage:
+      name: page
+      in: query
+      required: false
+      description: Zero-based page number
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    IndexPageSize:
+      name: pageSize
+      in: query
+      required: false
+      description: Items per page
+      schema:
+        type: integer
+        minimum: 1
+        default: 20
+    IndexOlderThan:
+      name: olderThan
+      in: query
+      required: true
+      description: Return only items created before this timestamp (RFC3339, e.g. `2024-01-01T00:00:00Z`).
+      schema:
+        type: string
+        format: date-time
+        example: '2024-01-01T00:00:00Z'
+    IndexOlderThanFilter:
+      name: olderThan
+      in: query
+      required: false
+      description: Only items created before this timestamp (RFC3339).
+      schema:
+        type: string
+        format: date-time
+        example: '2024-01-01T00:00:00Z'
+    IndexKeepLast:
+      name: keepLast
+      in: query
+      description: Skip the newest N versions of each artifact (by semver), match the rest.
+      schema:
+        type: integer
+        minimum: 1
+    IndexVersionFrom:
+      name: from
+      in: query
+      description: Only versions >= this semver (inclusive).
+      schema:
+        type: string
+        pattern: ^\d+\.\d+\.\d+$
+    IndexVersionBelow:
+      name: below
+      in: query
+      description: Only versions < this semver (exclusive).
+      schema:
+        type: string
+        pattern: ^\d+\.\d+\.\d+$
+    IndexVersionList:
+      name: version
+      in: query
+      description: Exact versions (repeatable, e.g. `?version=1.0.0&version=1.0.1`). Per artifact only.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          pattern: ^\d+\.\d+\.\d+$
+    IndexHasFiles:
+      name: hasFiles
+      in: query
+      description: '`false` = no file at all (any status), `true` = at least one file.'
+      schema:
+        type: boolean
+    IndexHasIncompleteFiles:
+      name: hasIncompleteFiles
+      in: query
+      description: '`true` = at least one PENDING/ERROR file (interrupted or failed upload).'
+      schema:
+        type: boolean
+    IndexMinBytes:
+      name: minBytes
+      in: query
+      description: Only versions whose AVAILABLE files total at least this many bytes.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    IndexMaxBytes:
+      name: maxBytes
+      in: query
+      description: Only versions whose AVAILABLE files total at most this many bytes.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    IndexDeletable:
+      name: deletable
+      in: query
+      description: '`true` hides versions a bulk delete would skip (tagged versions, artifacts with the protection
+        tag), so the list shows exactly what the DELETE with the same filters would remove.'
+      schema:
+        type: boolean
+        default: false
+    IndexDryRun:
+      name: dryRun
+      in: query
+      description: Report what would be deleted without deleting anything.
+      schema:
+        type: boolean
+        default: false
   schemas:
     GroupRoleRow:
       type: object
@@ -4682,6 +5506,111 @@ components:
         error:
           type: string
           example: artifact not found
+    IndexMetricsSnapshot:
+      type: object
+      required:
+      - cachedAt
+      - totalArtifacts
+      - totalVersions
+      - totalTags
+      - filesAvailable
+      - filesPending
+      - filesError
+      - totalStorageBytes
+      - artifactsWithoutTags
+      - artifactsWithoutVersions
+      - typeCounts
+      - artifactsWithoutFiles
+      - versionsWithoutFiles
+      - brokenTags
+      - unusedTypes
+      - retentionPolicies
+      - storageBytesByBackend
+      properties:
+        cachedAt:
+          type: string
+          format: date-time
+          description: When this snapshot was loaded from the database
+        totalArtifacts:
+          type: integer
+          format: int64
+        totalVersions:
+          type: integer
+          format: int64
+        totalTags:
+          type: integer
+          format: int64
+        filesAvailable:
+          type: integer
+          format: int64
+        filesPending:
+          type: integer
+          format: int64
+          description: Files of interrupted uploads
+        filesError:
+          type: integer
+          format: int64
+          description: Files of failed uploads
+        totalStorageBytes:
+          type: integer
+          format: int64
+          description: Sum of size_bytes of AVAILABLE files
+        artifactsWithoutTags:
+          type: integer
+          format: int64
+        artifactsWithoutVersions:
+          type: integer
+          format: int64
+        artifactsWithoutFiles:
+          type: integer
+          format: int64
+          description: Artifacts with versions but no file in any of them
+        versionsWithoutFiles:
+          type: integer
+          format: int64
+          description: Versions with no file at all (any status)
+        brokenTags:
+          type: integer
+          format: int64
+          description: Tags whose version has no AVAILABLE file
+        unusedTypes:
+          type: integer
+          format: int64
+          description: Types assigned to no artifact
+        retentionPolicies:
+          type: integer
+          format: int64
+          description: Stored retention policies (artifact + type)
+        typeCounts:
+          type: array
+          items:
+            type: object
+            required:
+            - typeName
+            - count
+            properties:
+              typeName:
+                type: string
+              count:
+                type: integer
+                format: int64
+        storageBytesByBackend:
+          type: array
+          description: Bytes of AVAILABLE files per storage backend
+          items:
+            type: object
+            required:
+            - backend
+            - bytes
+            properties:
+              backend:
+                type: string
+                enum:
+                - FILESYSTEM
+                - S3
+              bytes:
+                type: integer
+                format: int64
     IndexTypeResponse:
       type: object
       required:
@@ -4699,6 +5628,7 @@ components:
           example: ml-model
         description:
           type: string
+          example: Machine learning model artifacts
           nullable: true
         createdAt:
           type: string
@@ -4714,9 +5644,11 @@ components:
         name:
           type: string
           maxLength: 255
+          example: ml-model
         description:
           type: string
           maxLength: 2000
+          example: Machine learning model artifacts
           nullable: true
     IndexUpdateTypeRequest:
       type: object
@@ -4726,6 +5658,7 @@ components:
         name:
           type: string
           maxLength: 255
+          example: ml-model
         description:
           type: string
           maxLength: 2000
@@ -4748,11 +5681,23 @@ components:
           example: org.platform.data.pipeline
         description:
           type: string
+          example: ETL pipeline artifact
           nullable: true
         types:
           type: array
           items:
             $ref: '#/components/schemas/IndexTypeResponse'
+        versionCount:
+          type: integer
+          format: int32
+        largestVersionBytes:
+          type: integer
+          format: int64
+          description: Byte size of the largest version (sum of its AVAILABLE files)
+        totalBytes:
+          type: integer
+          format: int64
+          description: Byte size of all versions (sum of their AVAILABLE files)
         createdAt:
           type: string
           format: date-time
@@ -4786,9 +5731,11 @@ components:
         fullName:
           type: string
           maxLength: 500
+          example: org.platform.data.pipeline
         description:
           type: string
           maxLength: 2000
+          example: ETL pipeline artifact
           nullable: true
     IndexUpdateArtifactRequest:
       type: object
@@ -4847,14 +5794,22 @@ components:
           example: 1.2.3
         major:
           type: integer
+          format: int32
         minor:
           type: integer
+          format: int32
         patch:
           type: integer
+          format: int32
         config:
           type: string
-          nullable: true
           description: Raw configuration string (JSON or YAML)
+          example: '{"workers": 4, "timeout": "30s"}'
+          nullable: true
+        totalBytes:
+          type: integer
+          format: int64
+          description: Sum of the sizes of the version's AVAILABLE files
         tags:
           type: array
           items:
@@ -4870,14 +5825,260 @@ components:
         version:
           type: string
           pattern: ^\d+\.\d+\.\d+$
+          example: 1.2.3
         config:
           type: string
+          description: Raw configuration string (JSON or YAML)
           nullable: true
         tags:
           type: array
           items:
             type: string
-          description: Tag names to assign on creation
+          description: Tag names to assign to this version on creation
+    IndexBulkDeleteResponse:
+      type: object
+      required:
+      - deleted
+      - skipped
+      properties:
+        deleted:
+          type: integer
+          format: int64
+          description: Number of items that were deleted
+        skipped:
+          type: integer
+          format: int64
+          description: Number of items skipped due to the protection tag
+    IndexVersionPage:
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - pageSize
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexVersionResponse'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    IndexTypePage:
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - pageSize
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexTypeResponse'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    IndexTagListItem:
+      type: object
+      required:
+      - id
+      - artifactId
+      - artifactName
+      - tag
+      - versionId
+      - version
+      - broken
+      - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        artifactId:
+          type: integer
+          format: int64
+        artifactName:
+          type: string
+        tag:
+          type: string
+        versionId:
+          type: integer
+          format: int64
+        version:
+          type: string
+          example: 1.2.3
+        broken:
+          type: boolean
+          description: The tagged version has no AVAILABLE file
+        updatedAt:
+          type: string
+          format: date-time
+    IndexTagListPage:
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - pageSize
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexTagListItem'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    IndexSetRetentionRequest:
+      type: object
+      description: At least one field. A rule matches versions outside the newest `keepLast` (by semver) AND
+        older than `maxAgeDays`; an unset field adds no constraint.
+      properties:
+        keepLast:
+          type: integer
+          minimum: 1
+        maxAgeDays:
+          type: integer
+          minimum: 1
+    IndexRetentionPolicy:
+      type: object
+      required:
+      - id
+      - artifactId
+      - typeId
+      - keepLast
+      - maxAgeDays
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        artifactId:
+          type: integer
+          format: int64
+          nullable: true
+        artifactName:
+          type: string
+          description: Only in the policy list
+        typeId:
+          type: integer
+          format: int64
+          nullable: true
+        typeName:
+          type: string
+          description: Only in the policy list
+        keepLast:
+          type: integer
+          nullable: true
+        maxAgeDays:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    IndexEffectiveRetention:
+      type: object
+      required:
+      - source
+      - rule
+      - own
+      - fromTypes
+      - versionFilter
+      properties:
+        source:
+          type: string
+          enum:
+          - artifact
+          - types
+          - none
+        rule:
+          type: object
+          properties:
+            keepLast:
+              type: integer
+              nullable: true
+            maxAgeDays:
+              type: integer
+              nullable: true
+          nullable: true
+        own:
+          allOf:
+          - $ref: '#/components/schemas/IndexRetentionPolicy'
+          nullable: true
+        fromTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexRetentionPolicy'
+        versionFilter:
+          type: string
+          example: keepLast=5&olderThan=2026-09-27T10%3A00%3A00Z
+          description: Query string for the version list / bulk delete; empty when no rule applies
+    IndexBulkVersionDeleteResponse:
+      type: object
+      required:
+      - deleted
+      - skipped
+      - dryRun
+      - versions
+      properties:
+        deleted:
+          type: integer
+          format: int64
+          description: Versions deleted (with dryRun, versions that would be deleted)
+        skipped:
+          type: integer
+          format: int64
+          description: Matching versions kept because a tag points at them or the artifact is protected
+        dryRun:
+          type: boolean
+        versions:
+          type: array
+          items:
+            type: object
+            required:
+            - artifactId
+            - version
+            properties:
+              artifactId:
+                type: integer
+                format: int64
+              version:
+                type: string
+                example: 1.2.3
+    IndexFilePage:
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - pageSize
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexFileResponse'
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        pageSize:
+          type: integer
     IndexAssignTagRequest:
       type: object
       required:
@@ -4886,6 +6087,8 @@ components:
         version:
           type: string
           pattern: ^\d+\.\d+\.\d+$
+          example: 1.2.3
+          description: Semver string of the version to assign this tag to
     IndexFileResponse:
       type: object
       required:
@@ -4909,6 +6112,7 @@ components:
           example: model.onnx
         contentType:
           type: string
+          example: application/octet-stream
           nullable: true
         sizeBytes:
           type: integer
@@ -4927,6 +6131,7 @@ components:
           - ERROR
         downloadUrl:
           type: string
+          example: /api/v1/artifacts/1/versions/1.2.3/files/7/download
         createdAt:
           type: string
           format: date-time
@@ -5713,8 +6918,7 @@ components:
           $ref: '#/components/schemas/K8sLocalObjectReference'
         jobs:
           type: string
-          description: Raw jobs YAML
-          parsed via trigger.ParseBatchJobs: null
+          description: Raw jobs YAML parsed via trigger.ParseBatchJobs
     WeaveBatchValidationError:
       type: object
       properties:
@@ -6654,8 +7858,7 @@ components:
         - bearerAuth: []
         responses:
           '200':
-            description: Upstream response
-            forwarded verbatim: null
+            description: Upstream response forwarded verbatim
           '401':
             description: No valid session or bearer token
           '403':
@@ -6669,8 +7872,7 @@ components:
         - bearerAuth: []
         responses:
           '200':
-            description: Upstream response
-            forwarded verbatim: null
+            description: Upstream response forwarded verbatim
           '401':
             description: No valid session or bearer token
           '403':
@@ -6684,8 +7886,7 @@ components:
         - bearerAuth: []
         responses:
           '200':
-            description: Upstream response
-            forwarded verbatim: null
+            description: Upstream response forwarded verbatim
           '401':
             description: No valid session or bearer token
           '403':
@@ -6699,8 +7900,7 @@ components:
         - bearerAuth: []
         responses:
           '200':
-            description: Upstream response
-            forwarded verbatim: null
+            description: Upstream response forwarded verbatim
           '401':
             description: No valid session or bearer token
           '403':
@@ -6714,8 +7914,7 @@ components:
         - bearerAuth: []
         responses:
           '200':
-            description: Upstream response
-            forwarded verbatim: null
+            description: Upstream response forwarded verbatim
           '401':
             description: No valid session or bearer token
           '403':
@@ -6760,18 +7959,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ForgeError'
-    IndexBadRequest:
-      description: Invalid request body
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/IndexError'
-    IndexNotFound:
-      description: Not found
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/IndexError'
     WeaveBadRequest:
       description: Invalid request body or path parameter
       content:

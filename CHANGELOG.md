@@ -7,11 +7,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.14.5] — 2026-10-27
+
+### Added
+- `rbac.yaml`: permission `index:retention:manage` (`admin` only) + route rules `PUT`/`DELETE /api/index/api/v1/artifacts/*/retention` (`resource_type: artifact`) and `PUT`/`DELETE /api/index/api/v1/types/*/retention` for fusion-index's retention policies. Before, they fell through to `index:artifacts:write`, `index:artifacts:delete` and `index:types:manage`. Reading the policies (`GET .../retention`, `GET /retention-policies`) stays under the existing read rules.
+- `rbac.yaml`: rule `DELETE /api/index/api/v1/artifacts/*/versions` (fusion-index bulk version delete) → `index:versions:delete` with `resource_type: artifact`, the same as the single-version delete. Before, it fell through to `DELETE .../artifacts/*` (`index:artifacts:delete`). The new admin cleanups (`/admin/versions`, `/admin/files/incomplete`, `/admin/types/unused`) are covered by the existing `index:admin:manage` rules, and `GET /tags` and `GET /versions` by the `index:artifacts:read` catch-all.
+- `openapi.yaml`: the fusion-index section is regenerated from fusion-index's own spec (maintenance API). It adds the paths `/versions`, `/tags`, `/retention-policies`, `/artifacts/{id}/retention`, `/types/{typeId}/retention`, `DELETE /artifacts/{id}/versions` and all `/admin/*` cleanups. It also adds the new list filters/sorting, `totalBytes`/`versionCount`/`largestVersionBytes`, the `IndexMetricsSnapshot` JSON schema for `/q/metrics` (previously documented wrongly as Prometheus text) and shared `Index*` query parameters under `components.parameters`. The 3.1 constructs were converted to 3.0.3 (`nullable`), and every `x-required-permission` was checked against `rbac.MatchRoute`.
+
 ### Changed
 - **Postgres hook Jobs (`createDatabaseJob`, `rbacSeed`) use `postgres:18-trixie` (Debian) instead of `postgres:16-alpine`**, running as UID 999 (the Debian image's `postgres` user) instead of 70 — no Alpine images anymore. Verified with dash as `/bin/sh` under `readOnlyRootFilesystem`
 
 ### Fixed
 - **`createDatabaseJob` never worked:** psql doesn't substitute `:'target'` inside `-c "..."`, so the existence check failed with a syntax error. The SQL now goes through a heredoc and `CREATE DATABASE` quotes the name server-side with `format('%I')` + `\gexec`
+- **Removing a tag required `index:artifacts:delete`:** the `DELETE .../artifacts/*/tags/*` → `index:artifacts:write` rule came after `DELETE .../artifacts/*`, which shadowed it, so engineers could set tags but not remove them. The rule now comes first.
+- `openapi.yaml`: seven descriptions whose wrapped second line YAML parsed as a bogus `<text>: null` key (e.g. `/bff/admin/resource-permissions` 400, `/bff/admin/service-status/{service}` 400). The spec now passes `openapi-spec-validator`, apart from the deliberate 3.1-only `components.pathItems`.
 
 ## [0.14.2] — 2026-10-27
 

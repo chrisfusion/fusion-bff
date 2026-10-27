@@ -178,6 +178,7 @@ These are resolved at login and embedded in the `userinfo` response as `resource
 ```
 index:artifacts:read      index:artifacts:write    index:artifacts:delete
 index:versions:write      index:versions:delete    index:types:manage
+index:retention:manage    index:metrics:read       index:admin:manage
 forge:builds:read         forge:builds:create
 content:changelog:read    content:help:read        content:videos:read
 bff:presets:read
