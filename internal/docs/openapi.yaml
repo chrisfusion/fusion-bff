@@ -3181,7 +3181,52 @@ paths:
       tags:
       - weave
       summary: List WeaveTriggers (all types)
+      description: |
+        Filter, sort and page WeaveTriggers. All filters are optional and combined with AND; multi-value filters accept repeated or
+        comma-separated values and match any. Unknown values of enum filters, bad times or sort keys give 400.
+        Pages follow the Kubernetes list shape: `metadata.continue` and `metadata.remainingItemCount` are set while
+        more items follow.
       x-required-permission: weave:resources:read
+      parameters:
+      - $ref: '#/components/parameters/ListQ'
+      - $ref: '#/components/parameters/ListSince'
+      - $ref: '#/components/parameters/ListUntil'
+      - $ref: '#/components/parameters/ListSource'
+      - $ref: '#/components/parameters/WeaveLabelSelector'
+      - $ref: '#/components/parameters/ListLimit'
+      - $ref: '#/components/parameters/ListContinue'
+      - name: sort
+        in: query
+        description: Sort key, prefix `-` for descending; ties are broken by name. Default `name`.
+        schema:
+          type: string
+          enum: [name, -name, created, -created, lastSchedule, -lastSchedule]
+      - name: type
+        in: query
+        description: "Trigger type(s): OnDemand, Cron, Webhook, BatchCron, Kafka."
+        schema:
+          type: string
+          example: Cron
+      - name: chain
+        in: query
+        description: Name(s) of the triggered WeaveChain.
+        schema:
+          type: string
+      - name: paused
+        in: query
+        description: spec.paused
+        schema:
+          type: boolean
+      - name: active
+        in: query
+        description: status.active
+        schema:
+          type: boolean
+      - name: quarantined
+        in: query
+        description: status.quarantined
+        schema:
+          type: boolean
       responses:
         '200':
           description: List
@@ -3295,8 +3340,48 @@ paths:
       tags:
       - weave
       summary: List BatchCron-type triggers
-      description: Filters the full WeaveTrigger list to spec.type == BatchCron.
+      description: Filters the full WeaveTrigger list to spec.type == BatchCron; takes the same parameters as GET /triggers.
       x-required-permission: weave:resources:read
+      parameters:
+      - $ref: '#/components/parameters/ListQ'
+      - $ref: '#/components/parameters/ListSince'
+      - $ref: '#/components/parameters/ListUntil'
+      - $ref: '#/components/parameters/ListSource'
+      - $ref: '#/components/parameters/WeaveLabelSelector'
+      - $ref: '#/components/parameters/ListLimit'
+      - $ref: '#/components/parameters/ListContinue'
+      - name: sort
+        in: query
+        description: Sort key, prefix `-` for descending; ties are broken by name. Default `name`.
+        schema:
+          type: string
+          enum: [name, -name, created, -created, lastSchedule, -lastSchedule]
+      - name: type
+        in: query
+        description: "Trigger type(s): OnDemand, Cron, Webhook, BatchCron, Kafka."
+        schema:
+          type: string
+          example: Cron
+      - name: chain
+        in: query
+        description: Name(s) of the triggered WeaveChain.
+        schema:
+          type: string
+      - name: paused
+        in: query
+        description: spec.paused
+        schema:
+          type: boolean
+      - name: active
+        in: query
+        description: status.active
+        schema:
+          type: boolean
+      - name: quarantined
+        in: query
+        description: status.quarantined
+        schema:
+          type: boolean
       responses:
         '200':
           description: List
@@ -3526,8 +3611,48 @@ paths:
       tags:
       - weave
       summary: List Kafka-type triggers
-      description: Filters the full WeaveTrigger list to spec.type == Kafka.
+      description: Filters the full WeaveTrigger list to spec.type == Kafka; takes the same parameters as GET /triggers.
       x-required-permission: weave:resources:read
+      parameters:
+      - $ref: '#/components/parameters/ListQ'
+      - $ref: '#/components/parameters/ListSince'
+      - $ref: '#/components/parameters/ListUntil'
+      - $ref: '#/components/parameters/ListSource'
+      - $ref: '#/components/parameters/WeaveLabelSelector'
+      - $ref: '#/components/parameters/ListLimit'
+      - $ref: '#/components/parameters/ListContinue'
+      - name: sort
+        in: query
+        description: Sort key, prefix `-` for descending; ties are broken by name. Default `name`.
+        schema:
+          type: string
+          enum: [name, -name, created, -created, lastSchedule, -lastSchedule]
+      - name: type
+        in: query
+        description: "Trigger type(s): OnDemand, Cron, Webhook, BatchCron, Kafka."
+        schema:
+          type: string
+          example: Cron
+      - name: chain
+        in: query
+        description: Name(s) of the triggered WeaveChain.
+        schema:
+          type: string
+      - name: paused
+        in: query
+        description: spec.paused
+        schema:
+          type: boolean
+      - name: active
+        in: query
+        description: status.active
+        schema:
+          type: boolean
+      - name: quarantined
+        in: query
+        description: status.quarantined
+        schema:
+          type: boolean
       responses:
         '200':
           description: List
@@ -3641,7 +3766,42 @@ paths:
       tags:
       - weave
       summary: List WeaveRuns
+      description: |
+        Filter, sort and page WeaveRuns. The time window applies to status.startTime (creation time for runs not started yet). All filters are optional and combined with AND; multi-value filters accept repeated or
+        comma-separated values and match any. Unknown values of enum filters, bad times or sort keys give 400.
+        Pages follow the Kubernetes list shape: `metadata.continue` and `metadata.remainingItemCount` are set while
+        more items follow.
       x-required-permission: weave:resources:read
+      parameters:
+      - $ref: '#/components/parameters/ListQ'
+      - $ref: '#/components/parameters/ListSince'
+      - $ref: '#/components/parameters/ListUntil'
+      - $ref: '#/components/parameters/ListSource'
+      - $ref: '#/components/parameters/WeaveLabelSelector'
+      - $ref: '#/components/parameters/ListLimit'
+      - $ref: '#/components/parameters/ListContinue'
+      - name: sort
+        in: query
+        description: Sort key, prefix `-` for descending; ties are broken by name. Default `-created`.
+        schema:
+          type: string
+          enum: [name, -name, created, -created, started, -started, completed, -completed, duration, -duration]
+      - name: phase
+        in: query
+        description: "Run phase(s): Pending (includes runs not reconciled yet), Running, Succeeded, Failed, Stopped."
+        schema:
+          type: string
+          example: Running
+      - name: chain
+        in: query
+        description: Name(s) of the WeaveChain (spec.chainRef).
+        schema:
+          type: string
+      - name: trigger
+        in: query
+        description: Name(s) of the WeaveTrigger that created the run (spec.triggerRef).
+        schema:
+          type: string
       responses:
         '200':
           description: List
@@ -3671,6 +3831,48 @@ paths:
           $ref: '#/components/responses/WeaveBadRequest'
         '409':
           $ref: '#/components/responses/WeaveConflict'
+  /api/weave/api/v1/runs/facets:
+    get:
+      tags:
+      - weave
+      summary: Count WeaveRuns per phase, chain, trigger and source
+      description: |
+        For GUI filter drop-downs. Takes the same filters as GET /runs and counts the runs that match all of them
+        (sort, limit and continue are ignored). Runs without a trigger are not counted under `trigger`.
+      x-required-permission: weave:resources:read
+      parameters:
+      - $ref: '#/components/parameters/ListQ'
+      - $ref: '#/components/parameters/ListSince'
+      - $ref: '#/components/parameters/ListUntil'
+      - $ref: '#/components/parameters/ListSource'
+      - $ref: '#/components/parameters/WeaveLabelSelector'
+      - $ref: '#/components/parameters/ListLimit'
+      - $ref: '#/components/parameters/ListContinue'
+      - name: phase
+        in: query
+        description: "Run phase(s): Pending (includes runs not reconciled yet), Running, Succeeded, Failed, Stopped."
+        schema:
+          type: string
+          example: Running
+      - name: chain
+        in: query
+        description: Name(s) of the WeaveChain (spec.chainRef).
+        schema:
+          type: string
+      - name: trigger
+        in: query
+        description: Name(s) of the WeaveTrigger that created the run (spec.triggerRef).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveRunFacets'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
   /api/weave/api/v1/runs/{name}:
     parameters:
     - name: name
@@ -3823,7 +4025,48 @@ paths:
       tags:
       - weave
       summary: List WeaveApps
+      description: |
+        Filter, sort and page WeaveApps. The time window applies to the creation time. All filters are optional and combined with AND; multi-value filters accept repeated or
+        comma-separated values and match any. Unknown values of enum filters, bad times or sort keys give 400.
+        Pages follow the Kubernetes list shape: `metadata.continue` and `metadata.remainingItemCount` are set while
+        more items follow.
       x-required-permission: weave:resources:read
+      parameters:
+      - $ref: '#/components/parameters/ListQ'
+      - $ref: '#/components/parameters/ListSince'
+      - $ref: '#/components/parameters/ListUntil'
+      - $ref: '#/components/parameters/ListSource'
+      - $ref: '#/components/parameters/WeaveLabelSelector'
+      - $ref: '#/components/parameters/ListLimit'
+      - $ref: '#/components/parameters/ListContinue'
+      - name: sort
+        in: query
+        description: Sort key, prefix `-` for descending; ties are broken by name. Default `name`.
+        schema:
+          type: string
+          enum: [name, -name, created, -created, lastExecution, -lastExecution]
+      - name: type
+        in: query
+        description: "App type(s): service, job."
+        schema:
+          type: string
+          example: job
+      - name: phase
+        in: query
+        description: "App phase(s): Pending, Ready, Running, Invalid."
+        schema:
+          type: string
+          example: Ready
+      - name: codeSource
+        in: query
+        description: true = only apps with spec.codeSource, false = only apps without.
+        schema:
+          type: boolean
+      - name: running
+        in: query
+        description: true = only apps with a running execution (status.executions), false = only apps without.
+        schema:
+          type: boolean
       responses:
         '200':
           description: OK
@@ -3930,6 +4173,62 @@ paths:
       responses:
         '204':
           description: Deleted
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+  /api/weave/api/v1/apps/{name}/executions:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - weave
+      summary: List the executions of a job WeaveApp
+      description: |
+        Filters, sorts and pages status.executions (the last 20). `q` searches the Job name, the time window
+        applies to the start time; `source` and `labelSelector` do not apply to executions.
+      x-required-permission: weave:resources:read
+      parameters:
+      - $ref: '#/components/parameters/ListQ'
+      - $ref: '#/components/parameters/ListSince'
+      - $ref: '#/components/parameters/ListUntil'
+      - $ref: '#/components/parameters/ListLimit'
+      - $ref: '#/components/parameters/ListContinue'
+      - name: sort
+        in: query
+        description: Sort key, prefix `-` for descending; ties are broken by name. Default `-started`.
+        schema:
+          type: string
+          enum: [name, -name, started, -started, completed, -completed, entrypoint, -entrypoint]
+      - name: phase
+        in: query
+        description: "Execution phase(s): Running, Succeeded, Failed."
+        schema:
+          type: string
+          example: Failed
+      - name: entrypoint
+        in: query
+        description: Entrypoint name(s).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Executions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metadata:
+                    $ref: '#/components/schemas/WeaveListMeta'
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WeaveAppExecution'
+        '400':
+          $ref: '#/components/responses/WeaveBadRequest'
         '404':
           $ref: '#/components/responses/WeaveNotFound'
   /api/weave/api/v1/apps/{name}/fire:
@@ -4330,10 +4629,23 @@ paths:
       - wizard
       summary: List WizardRuns
       description: |
-        Sorted newest first. Supports `?definition=`, `?phase=` and `?createdBy=` filters, and
-        `?limit=` (default 100, max 500).
+        Sorted newest first by default. Filters: `definition` and `phase` (repeated or comma-separated, match any),
+        `createdBy`, plus the shared list parameters (`q`, `since`/`until` on the creation time, `source=gitops` for
+        runs Flux applied from a GitOps repo, `sort`, `continue`). `limit` defaults to 100 (max 500); `total`
+        counts all matches, `continue` is present while more pages follow.
       x-required-permission: wizard:runs:read
       parameters:
+      - $ref: '#/components/parameters/ListQ'
+      - $ref: '#/components/parameters/ListSince'
+      - $ref: '#/components/parameters/ListUntil'
+      - $ref: '#/components/parameters/ListSource'
+      - $ref: '#/components/parameters/ListContinue'
+      - name: sort
+        in: query
+        description: Sort key, prefix `-` for descending; ties are broken by name. Default `-created`.
+        schema:
+          type: string
+          enum: [created, -created, name, -name, phase, -phase, definition, -definition]
       - name: definition
         in: query
         schema:
@@ -4364,6 +4676,9 @@ paths:
                       $ref: '#/components/schemas/WizardRunView'
                   total:
                     type: integer
+                  continue:
+                    type: string
+                    description: Token for the next page; absent on the last page.
     post:
       tags:
       - wizard
@@ -4766,6 +5081,56 @@ components:
       bearerFormat: JWT
       description: OIDC access token, accepted as a fallback when no session cookie is present
   parameters:
+    ListQ:
+      name: q
+      in: query
+      description: Case-insensitive substring of the name.
+      schema:
+        type: string
+        maxLength: 256
+    ListSince:
+      name: since
+      in: query
+      description: Start of the time window (inclusive). RFC 3339 time, or a duration back from now (`90m`, `24h`, `7d`).
+      schema:
+        type: string
+        example: 24h
+    ListUntil:
+      name: until
+      in: query
+      description: End of the time window (exclusive), same formats as `since`.
+      schema:
+        type: string
+    ListSource:
+      name: source
+      in: query
+      description: |
+        Where the item came from: `gitops` (applied by Flux, i.e. labelled `kustomize.toolkit.fluxcd.io/name`, or
+        `fusion-platform.io/managed-by=gitops`) or any `fusion-platform.io/managed-by` value (`manual`, `wizard`, ...).
+        Repeatable or comma-separated; matches any.
+      schema:
+        type: string
+        example: gitops
+    ListLimit:
+      name: limit
+      in: query
+      description: Page size (1-500). Without it the whole filtered list is returned.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+    ListContinue:
+      name: continue
+      in: query
+      description: Opaque token from `metadata.continue` of the previous page; keep the other parameters unchanged.
+      schema:
+        type: string
+    WeaveLabelSelector:
+      name: labelSelector
+      in: query
+      description: Kubernetes label selector, applied by the Kubernetes list call (e.g. `fusion-platform.io/owner-group=team-a`).
+      schema:
+        type: string
     IndexArtifactId:
       name: id
       in: path
@@ -6898,9 +7263,41 @@ components:
           $ref: '#/components/schemas/WeaveTriggerSpec'
         status:
           $ref: '#/components/schemas/WeaveTriggerStatus'
+    WeaveListMeta:
+      type: object
+      description: Pagination of a weave list; both fields are set only while more items follow.
+      properties:
+        continue:
+          type: string
+        remainingItemCount:
+          type: integer
+          format: int64
+    WeaveRunFacets:
+      type: object
+      properties:
+        total:
+          type: integer
+        phase:
+          type: object
+          additionalProperties:
+            type: integer
+        chain:
+          type: object
+          additionalProperties:
+            type: integer
+        trigger:
+          type: object
+          additionalProperties:
+            type: integer
+        source:
+          type: object
+          additionalProperties:
+            type: integer
     WeaveTriggerList:
       type: object
       properties:
+        metadata:
+          $ref: '#/components/schemas/WeaveListMeta'
         items:
           type: array
           items:
@@ -7202,6 +7599,8 @@ components:
     WeaveAppList:
       type: object
       properties:
+        metadata:
+          $ref: '#/components/schemas/WeaveListMeta'
         items:
           type: array
           items:
@@ -7365,6 +7764,8 @@ components:
     WeaveRunList:
       type: object
       properties:
+        metadata:
+          $ref: '#/components/schemas/WeaveListMeta'
         items:
           type: array
           items:

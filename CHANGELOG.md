@@ -7,6 +7,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- OpenAPI: list filtering, sorting and pagination parameters for weave `GET /apps`, `/runs`, `/triggers`, `/batchtriggers`, `/kafkatriggers` and wizard `GET /runs` (shared `ListQ`/`ListSince`/`ListUntil`/`ListSource`/`ListLimit`/`ListContinue`/`WeaveLabelSelector` components, `WeaveListMeta` on weave list schemas), plus the new weave `GET /runs/facets` and `GET /apps/{name}/executions`. No routing or permission change: the generic proxies already forward query strings and the GETs fall under `weave:resources:read` / `wizard:runs:read`.
+- Proxy test that query strings (repeated keys, commas, encoded `+`) reach the upstream unchanged.
+
 ## [0.14.6] — 2026-10-27
 
 ### Changed

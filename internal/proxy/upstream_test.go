@@ -52,3 +52,33 @@ func TestUpstreamProxy_ForwardsOwnerGroupsAndStripsSpoofedHeader(t *testing.T) {
 		t.Errorf("spoofed X-User-Groups leaked upstream: %q", h.Get("X-User-Groups"))
 	}
 }
+
+// List filters (weave/wizard listquery parameters) must reach the upstream byte for byte:
+// repeated keys, commas and encoded "+" in RFC 3339 offsets included.
+func TestUpstreamProxy_ForwardsQueryString(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var gotPath, gotQuery string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotQuery = r.URL.Path, r.URL.RawQuery
+	}))
+	defer upstream.Close()
+
+	p, err := NewUpstreamProxy(upstream.URL, "/api/weave", staticToken("sa"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := gin.New()
+	r.Any("/api/weave/*path", p.Handler())
+	front := httptest.NewServer(r)
+	defer front.Close()
+
+	const query = "phase=Running,Failed&phase=Pending&source=gitops&since=2026-10-27T13%3A00%3A00%2B01%3A00&sort=-created&limit=50&continue=bzE6NTA"
+	resp, err := http.Get(front.URL + "/api/weave/api/v1/runs?" + query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if gotPath != "/api/v1/runs" || gotQuery != query {
+		t.Errorf("upstream got %s?%s, want /api/v1/runs?%s", gotPath, gotQuery, query)
+	}
+}
