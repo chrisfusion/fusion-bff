@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.14.2] — 2026-10-27
+
+### Added
+- `rbac.yaml`: permission `weave:apps:fire` + route rule `POST /api/weave/api/v1/apps/*/fire` (fusion-weave 0.6.2's fire endpoint) for `admin`, `engineer` and `user` — common users get Run now on wizard-created jobs without any app write access. Documented in `openapi.yaml`.
+
 ## [0.14.1] — 2026-10-27
 
 ### Added

@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, fusion-wizard, and fusion-content.
-  version: 0.14.1
+  version: 0.14.2
   license:
     name: GPL-3.0
 servers:
@@ -3261,6 +3261,45 @@ paths:
           description: Deleted
         '404':
           $ref: '#/components/responses/WeaveNotFound'
+  /api/weave/api/v1/apps/{name}/fire:
+    parameters:
+    - name: name
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      tags:
+      - weave
+      summary: Fire one entrypoint of a job WeaveApp
+      description: |
+        Sets the fusion-platform.io/fire annotation the operator consumes, launching
+        the entrypoint once. Touches nothing else, so it is granted separately from
+        weave:apps:write (the common user role has it for Run now on wizard-created jobs).
+      x-required-permission: weave:apps:fire
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entrypoint]
+              properties:
+                entrypoint:
+                  type: string
+      responses:
+        '202':
+          description: Fire accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeaveApp'
+        '400':
+          description: Missing or unknown entrypoint, or not a job app
+        '404':
+          $ref: '#/components/responses/WeaveNotFound'
+        '409':
+          description: An execution of this entrypoint is still running
   /api/weave/api/v1/image-overrides/options:
     get:
       tags:

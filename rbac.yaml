@@ -49,6 +49,7 @@ role_permissions:
     - weave:kafkatriggers:write
     - weave:kafkatriggers:delete
     - weave:apps:write
+    - weave:apps:fire
     - weave:apps:delete
     - weave:steps:restart
     - weave:runs:image
@@ -91,6 +92,7 @@ role_permissions:
     - weave:batchtriggers:write
     - weave:kafkatriggers:write
     - weave:apps:write
+    - weave:apps:fire
     - weave:steps:restart
     - weave:runs:image
     - weave:runs:write
@@ -110,10 +112,12 @@ role_permissions:
   # Common users: wizards + their runs only (Simple mode in fusion-spectra). Provisioning runs
   # under fusion-wizard's own SA, so no forge/index/weave write permissions are needed.
   # weave:resources:read feeds the wizards' image-prefix and external-auth pickers;
-  # weave:monitoring:read and forge:builds:read serve the run and build logs on the wizard run page.
+  # weave:monitoring:read and forge:builds:read serve the run and build logs on the wizard run page;
+  # weave:apps:fire is the Run now button of a wizard-created job (POST .../apps/*/fire only, no app writes).
   user:
     - weave:resources:read
     - weave:monitoring:read
+    - weave:apps:fire
     - forge:builds:read
     - wizard:definitions:read
     - wizard:runs:read
@@ -197,6 +201,7 @@ route_permissions:
   - { method: PUT,    path: /api/weave/api/v1/kafkatriggers/*,        permission: weave:kafkatriggers:write }
   - { method: PATCH,  path: /api/weave/api/v1/kafkatriggers/*,        permission: weave:kafkatriggers:write }
   - { method: POST,   path: /api/weave/api/v1/kafkatriggers,          permission: weave:kafkatriggers:write }
+  - { method: POST,   path: /api/weave/api/v1/apps/*/fire,            permission: weave:apps:fire }
   - { method: DELETE, path: /api/weave/api/v1/apps/*,                 permission: weave:apps:delete }
   - { method: PUT,    path: /api/weave/api/v1/apps/*,                 permission: weave:apps:write }
   - { method: PATCH,  path: /api/weave/api/v1/apps/*,                 permission: weave:apps:write }
