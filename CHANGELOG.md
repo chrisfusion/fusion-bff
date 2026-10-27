@@ -7,7 +7,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-## [0.14.0] — 2026-10-20
+## [0.14.1] — 2026-10-27
+
+### Added
+- `openapi.yaml`: documented fusion-weave's new WeaveApp fields `spec.service.ingressAnnotations` (per-app Ingress annotations, override the instance-wide/runner-type ones) and `spec.writablePaths[]` (new `WeaveAppWritablePath` schema: `mountPath`, optional `sizeLimit`, `medium: Memory`) for `readOnlyRootFilesystem` images. No RBAC change: both ride on the existing `weave:apps:write` rules. — 2026-10-20
 
 ### Added
 - Direct role assignment by OIDC `sub` for the few users (admins, special users) who cannot be covered by an OIDC group: their roles are the union of their group roles and the roles assigned to their `sub`. Static via the new `user_roles` map in `rbac.yaml` (used for `group_source: jwt`/`both`), dynamic via the new `user_role_assignments` table and `GET/POST/DELETE /bff/admin/user-roles` (`admin:roles:manage`, audit-logged; used for `group_source: db`/`both`). Like group mappings, changes apply at the user's next login (Bearer requests resolve per request).

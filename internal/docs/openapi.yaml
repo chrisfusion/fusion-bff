@@ -3,7 +3,7 @@ info:
   title: fusion-bff API
   description: |
     Backend for Frontend for the fusion platform GUI. Validates OIDC sessions, enforces RBAC, and proxies authenticated requests to fusion-forge, fusion-index, fusion-weave, fusion-wizard, and fusion-content.
-  version: 0.14.0
+  version: 0.14.1
   license:
     name: GPL-3.0
 servers:
@@ -5784,6 +5784,11 @@ components:
           description: Shorthand for a single ingress rule; mutually exclusive with ingress.
         ingress:
           $ref: '#/components/schemas/WeaveAppIngress'
+        ingressAnnotations:
+          type: object
+          additionalProperties:
+            type: string
+          description: Per-app Ingress annotations (e.g. traefik.ingress.kubernetes.io/*); extend and on collision override the instance-wide and runner-type annotations. Additive — a removed key stays on an existing Ingress. Requires ingressName or ingress.
         livenessProbe:
           type: object
           additionalProperties: true
@@ -5793,6 +5798,22 @@ components:
         startupProbe:
           type: object
           additionalProperties: true
+    WeaveAppWritablePath:
+      type: object
+      required:
+      - mountPath
+      properties:
+        mountPath:
+          type: string
+          pattern: '^/.+'
+          description: Absolute path inside the container (e.g. /var/cache/nginx).
+        sizeLimit:
+          type: string
+          description: Kubernetes quantity (e.g. 200Mi); the pod is evicted when exceeded.
+        medium:
+          type: string
+          enum: [Memory]
+          description: Memory backs the emptyDir with tmpfs (counts against the memory limit).
     WeaveAppEntrypoint:
       type: object
       required:
@@ -5847,6 +5868,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WeaveVolumeMount'
+        writablePaths:
+          type: array
+          description: Writable emptyDirs for images running with readOnlyRootFilesystem; appended to the operator-wide and runner-type writable paths (an entry for an already-mounted path only sets sizeLimit/medium). Invalid paths make the app Invalid.
+          items:
+            $ref: '#/components/schemas/WeaveAppWritablePath'
         serviceAccountName:
           type: string
         podSecurityContext:
