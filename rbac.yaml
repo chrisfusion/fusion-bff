@@ -79,6 +79,7 @@ role_permissions:
     - index:artifacts:write
     - index:versions:write
     - index:types:manage
+    - index:retention:manage
     - index:metrics:read
     - forge:builds:read
     - forge:builds:create

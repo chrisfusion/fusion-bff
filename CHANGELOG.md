@@ -7,6 +7,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.14.6] — 2026-10-27
+
+### Changed
+- `rbac.yaml`: `engineer` gets `index:retention:manage` too, so engineers can set and remove fusion-index retention policies on artifacts and types (0.14.5: `admin` only).
+
 ## [0.14.5] — 2026-10-27
 
 ### Added
