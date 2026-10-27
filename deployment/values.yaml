@@ -154,14 +154,14 @@ postgresql:
   createDatabaseJob:
     enabled: false
     databaseName: fusion_bff
-    image: postgres:16-alpine
+    image: postgres:18-trixie
     activeDeadlineSeconds: 120
-    # postgres:16-alpine runs as UID 70 (user "postgres") — matches forge/index convention.
-    # Only the psql client is used here (non-interactive -c mode), so readOnlyRootFilesystem
-    # is safe with no extra volumes.
+    # postgres:18-trixie (Debian, no Alpine) runs as UID 999 (user "postgres"). Only the
+    # psql client is used, with the SQL on stdin (dash heredocs need no temp file), so
+    # readOnlyRootFilesystem is safe with no extra volumes.
     podSecurityContext:
       runAsNonRoot: true
-      runAsUser: 70
+      runAsUser: 999
       seccompProfile:
         type: RuntimeDefault
     containerSecurityContext:
@@ -219,11 +219,14 @@ rbacSeed:
   enabled: false
   adminGroup: platform-admin   # OIDC/Keycloak group to map to the "admin" role
   adminSubs: []                # OIDC sub values to map to the "admin" role directly
-  image: postgres:16-alpine
+  image: postgres:18-trixie
   activeDeadlineSeconds: 60
+  # postgres:18-trixie (Debian, no Alpine) runs as UID 999 (user "postgres"). Only the
+  # psql client is used, with the SQL on stdin (dash heredocs need no temp file), so
+  # readOnlyRootFilesystem is safe with no extra volumes.
   podSecurityContext:
     runAsNonRoot: true
-    runAsUser: 70
+    runAsUser: 999
     seccompProfile:
       type: RuntimeDefault
   containerSecurityContext:

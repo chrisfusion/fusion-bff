@@ -52,7 +52,7 @@ spec:
               # Keep this DDL in sync with internal/db/db.go's group_role_assignments and
               # user_role_assignments definitions.
               # NOTE: psql's :'var' substitution only works reading from a script/stdin,
-              # NOT via -c "..." (verified against postgres:16-alpine) — hence the heredoc.
+              # NOT via -c "..." (verified against postgres:16-alpine and 18-trixie) — hence the heredoc.
               psql "${DB_DSN}" -v ON_ERROR_STOP=1 -v admin_group="${ADMIN_GROUP}" -v admin_subs="${ADMIN_SUBS}" <<'SQL'
               CREATE TABLE IF NOT EXISTS group_role_assignments (
                   id         SERIAL PRIMARY KEY,
